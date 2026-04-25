@@ -10,6 +10,8 @@ authors = [{ name = "Aigerim Zhalgasbekova", email = "aikazzh@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "numpy>=2.1.0",
+    "opencv-python>=4.10.0",
     "pandas>=3.0.2",
     "pdf2image>=1.17.0",
     "pillow>=11.0.0",
@@ -17,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ocr-ptr-convert = "ocr_ptr_pdf_converter.converter:main"
+ocr-ptr-convert = "ocr_ptr_pdf_converter.cli:main"
 
 [dependency-groups]
 dev = [
@@ -53,6 +55,10 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_optional = true
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "numpy.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pandas.*", "pdf2image.*", "pytesseract.*", "PIL.*"]
