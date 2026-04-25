@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ocr-scanned-pdf-converter"
+version = "0.1.0"
+description = "OCR-based converter that turns scanned PTR-style PDFs into structured Markdown"
+authors = [{ name = "Aigerim Zhalgasbekova", email = "aikazzh@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pandas>=3.0.2",
+    "pdf2image>=1.17.0",
+    "pillow>=11.0.0",
+    "pytesseract>=0.3.13",
+]
+
+[project.scripts]
+ocr-ptr-convert = "ocr_ptr_pdf_converter.converter:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.9",
+    "mypy>=1.20.0",
+    "commitizen>=4.13.9",
+    "pre-commit>=4.5.1",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
+
+[[tool.mypy.overrides]]
+module = ["pandas.*", "pdf2image.*", "pytesseract.*", "PIL.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ocr_ptr_pdf_converter"]
+
+[tool.uv]
+package = true
