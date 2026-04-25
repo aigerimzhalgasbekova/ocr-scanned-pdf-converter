@@ -1,0 +1,155 @@
+from ocr_ptr_pdf_converter.extract import (
+    ColumnRole,
+    classify_header,
+    rows_from_cell_texts,
+)
+from ocr_ptr_pdf_converter.schema import TransactionRow
+
+
+def test_classify_header_single_tx_type_layout():
+    headers = ["Holder", "Asset", "Transaction type", "Date of transaction", "Amount code"]
+    roles = classify_header(headers)
+    assert roles == [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+
+
+def test_classify_header_split_layout():
+    headers = ["Holder", "Asset", "Purchase", "Sale", "Partial Sale", "Exchange",
+               "Date of transaction", "Date notified of transaction", "Amount"]
+    roles = classify_header(headers)
+    assert roles == [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.PURCHASE,
+        ColumnRole.SALE,
+        ColumnRole.PARTIAL_SALE,
+        ColumnRole.EXCHANGE,
+        ColumnRole.DATE_TX,
+        ColumnRole.DATE_NOTIFIED,
+        ColumnRole.AMOUNT,
+    ]
+
+
+def test_classify_header_is_case_insensitive_and_word_bounded():
+    # lowercase should still classify; "RESALE" must NOT match SALE.
+    roles = classify_header(["holder", "asset", "RESALE", "sale", "date"])
+    assert roles == [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.OTHER,
+        ColumnRole.SALE,
+        ColumnRole.DATE_TX,
+    ]
+
+
+def test_rows_split_layout_sale():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.PURCHASE,
+        ColumnRole.SALE,
+        ColumnRole.PARTIAL_SALE,
+        ColumnRole.EXCHANGE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["SP", "ASML HOLDING NV", "", "X", "", "", "03/31/2026", "A"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == [
+        TransactionRow("SP", "ASML HOLDING NV", "SALE", "03/31/2026", "A"),
+    ]
+
+
+def test_rows_split_layout_partial_sale():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.PURCHASE,
+        ColumnRole.SALE,
+        ColumnRole.PARTIAL_SALE,
+        ColumnRole.EXCHANGE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["SP", "FOO CORP", "", "", "X", "", "03/31/2026", "B"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == [
+        TransactionRow("SP", "FOO CORP", "PARTIAL SALE", "03/31/2026", "B"),
+    ]
+
+
+def test_tx_type_value_is_case_insensitive():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["sp", "FOO CORP", "Partial Sale", "03/31/2026", "a"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == [
+        TransactionRow("SP", "FOO CORP", "PARTIAL SALE", "03/31/2026", "A"),
+    ]
+
+
+def test_section_header_row():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["", "LINDA MAYS MCCAUL 1999 EXEMPT TRUST", "", "", ""]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == [
+        TransactionRow.section_header("LINDA MAYS MCCAUL 1999 EXEMPT TRUST"),
+    ]
+
+
+def test_wrapped_asset_merges_into_previous_data_row():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [
+        ["SP", "VANGUARD TOTAL STOCK", "Purchase", "03/27/2026", "A"],
+        ["", "MARKET INDEX ADMIRAL", "", "", ""],
+    ]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == [
+        TransactionRow(
+            "SP",
+            "VANGUARD TOTAL STOCK MARKET INDEX ADMIRAL",
+            "PURCHASE",
+            "03/27/2026",
+            "A",
+        ),
+    ]
+
+
+def test_orphan_after_section_header_stays_section_header():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [
+        ["", "LINDA MAYS MCCAUL", "", "", ""],
+        ["", "1999 EXEMPT TRUST", "", "", ""],
+    ]
+    rows = rows_from_cell_texts(cells, roles)
+    # Both treated as section headers — second one not merged into the first
+    assert all(r.is_section_header for r in rows)
+    assert len(rows) == 2
