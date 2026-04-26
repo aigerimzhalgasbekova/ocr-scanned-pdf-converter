@@ -157,13 +157,73 @@ _TRAIL_NOLETTERS_RE = re.compile(r"^[^A-Za-z]+$")
 # the asset name. Whitelist real asset suffixes so we don't munch them.
 _REAL_SHORT_SUFFIXES = frozenset(
     {
-        "LP", "INC", "CO", "CORP", "NV", "AG", "ADR", "ETF", "USD", "REV",
-        "DEV", "REF", "AUTH", "TR", "II", "III", "IV", "V", "VI", "VII",
-        "AGY", "FIN", "FUND", "FDS", "GO", "DEPT", "FED", "BD", "INST",
-        "INSTL", "LLC", "PLC", "GST", "DC", "CL", "SP", "JT", "A", "B", "C",
-        "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
-        "Q", "R", "S", "T", "U", "W", "X", "Y", "Z", "MKT", "STK", "INDEX",
-        "INDICES", "AOR",
+        "LP",
+        "INC",
+        "CO",
+        "CORP",
+        "NV",
+        "AG",
+        "ADR",
+        "ETF",
+        "USD",
+        "REV",
+        "DEV",
+        "REF",
+        "AUTH",
+        "TR",
+        "II",
+        "III",
+        "IV",
+        "V",
+        "VI",
+        "VII",
+        "AGY",
+        "FIN",
+        "FUND",
+        "FDS",
+        "GO",
+        "DEPT",
+        "FED",
+        "BD",
+        "INST",
+        "INSTL",
+        "LLC",
+        "PLC",
+        "GST",
+        "DC",
+        "CL",
+        "SP",
+        "JT",
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "P",
+        "Q",
+        "R",
+        "S",
+        "T",
+        "U",
+        "W",
+        "X",
+        "Y",
+        "Z",
+        "MKT",
+        "STK",
+        "INDEX",
+        "INDICES",
+        "AOR",
     }
 )
 
@@ -182,11 +242,7 @@ def _normalize_asset(raw: str) -> str:
         if _NOISE_TOKEN_RE.match(t) or _TRAIL_NOLETTERS_RE.match(t):
             tokens.pop()
             continue
-        if (
-            len(t) <= 2
-            and t.upper() not in _REAL_SHORT_SUFFIXES
-            and not t.isalpha()
-        ):
+        if len(t) <= 2 and t.upper() not in _REAL_SHORT_SUFFIXES and not t.isalpha():
             tokens.pop()
             continue
         # Drop 1-2 alpha tokens that aren't in our whitelist of real
@@ -253,9 +309,7 @@ def collect_column(
     return out
 
 
-def _row_from_cells(
-    texts: list[str], roles: list[ColumnRole]
-) -> TransactionRow:
+def _row_from_cells(texts: list[str], roles: list[ColumnRole]) -> TransactionRow:
     holder = ""
     asset_parts: list[str] = []
     tx_type = ""
@@ -347,6 +401,17 @@ def _is_empty(row: TransactionRow) -> bool:
     )
 
 
+# Form template prompt that bleeds through OCR on otherwise-blank rows. The
+# canonical text is "PROVIDE FULL NAME NOT TICKER SYMBOL" but OCR drifts the
+# trailing words ("TUCKER", "TICKER SYMBO!", etc.) — match on the stable
+# "PROVIDE FULL NAME" prefix.
+_PLACEHOLDER_RE = re.compile(r"PROVIDE\s+FULL\s+NAME", re.IGNORECASE)
+
+
+def _is_placeholder(row: TransactionRow) -> bool:
+    return bool(_PLACEHOLDER_RE.search(row.asset))
+
+
 def rows_from_cell_texts(
     cell_rows: list[list[str]], roles: list[ColumnRole]
 ) -> list[TransactionRow]:
@@ -356,6 +421,8 @@ def rows_from_cell_texts(
         if _is_empty(row):
             # Wholly blank row — skip so we don't pollute the markdown with
             # empty separator rows that count against over-generation.
+            continue
+        if _is_placeholder(row):
             continue
         if _is_orphan(row):
             if out and not out[-1].is_section_header and not _is_orphan(out[-1]):

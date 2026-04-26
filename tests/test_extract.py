@@ -7,7 +7,13 @@ from ocr_ptr_pdf_converter.schema import TransactionRow
 
 
 def test_classify_header_single_tx_type_layout():
-    headers = ["Holder", "Asset", "Transaction type", "Date of transaction", "Amount code"]
+    headers = [
+        "Holder",
+        "Asset",
+        "Transaction type",
+        "Date of transaction",
+        "Amount code",
+    ]
     roles = classify_header(headers)
     assert roles == [
         ColumnRole.HOLDER,
@@ -19,8 +25,17 @@ def test_classify_header_single_tx_type_layout():
 
 
 def test_classify_header_split_layout():
-    headers = ["Holder", "Asset", "Purchase", "Sale", "Partial Sale", "Exchange",
-               "Date of transaction", "Date notified of transaction", "Amount"]
+    headers = [
+        "Holder",
+        "Asset",
+        "Purchase",
+        "Sale",
+        "Partial Sale",
+        "Exchange",
+        "Date of transaction",
+        "Date notified of transaction",
+        "Amount",
+    ]
     roles = classify_header(headers)
     assert roles == [
         ColumnRole.HOLDER,
@@ -153,3 +168,23 @@ def test_orphan_after_section_header_stays_section_header():
     # Both treated as section headers — second one not merged into the first
     assert all(r.is_section_header for r in rows)
     assert len(rows) == 2
+
+
+def test_form_template_placeholder_rows_are_dropped():
+    """Blank PTR rows leak the template prompt 'PROVIDE FULL NAME NOT TICKER
+    SYMBOL' through OCR (with drift on the trailing tokens). They should not
+    survive as data rows or section headers."""
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [
+        ["JT", "PROVIDE FULL NAME NOT TICKER SYMBOL", "Purchase", "", "K"],
+        ["DC", "PROVIDE FULL NAME NAT TICKER SYMBOL", "Purchase", "", "K"],
+        ["", "provide full name not tucker symbol!", "", "", ""],
+    ]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == []
