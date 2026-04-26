@@ -41,8 +41,9 @@ def test_main_returns_3_when_no_rows(tmp_path, monkeypatch):
     fake.write_bytes(b"%PDF-1.4\n%%EOF\n")
 
     def _empty_convert_doc(path):
-        return Document(source_filename=path.name, date_notified="",
-                        pages=(PageResult(1, 0, ()),))
+        return Document(
+            source_filename=path.name, date_notified="", pages=(PageResult(1, 0, ()),)
+        )
 
     monkeypatch.setattr(cli_mod, "_convert_to_document", _empty_convert_doc)
     rc = main([str(fake), "-o", str(tmp_path / "out.md")])

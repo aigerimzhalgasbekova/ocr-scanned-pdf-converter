@@ -61,7 +61,9 @@ def cols_from_header_text(binary: np.ndarray) -> list[tuple[int, int]]:
         header_band, config="--psm 6", output_type=pytesseract.Output.DICT
     )
     xs: list[int] = []
-    for text, left, width in zip(data["text"], data["left"], data["width"], strict=True):
+    for text, left, width in zip(
+        data["text"], data["left"], data["width"], strict=True
+    ):
         if text and _HEADER_TOKEN_RE.match(text.strip()):
             xs.append(int(left))
             xs.append(int(left) + int(width))

@@ -22,7 +22,10 @@ def test_render_minimal_document():
     assert "## Amount code legend" in md
     assert "| K | Spouse/DC Amount over $1,000,000 |" in md
     assert "## Page 1" in md
-    assert "| Holder | Asset | Transaction type | Date of transaction | Amount code |" in md
+    assert (
+        "| Holder | Asset | Transaction type | Date of transaction | Amount code |"
+        in md
+    )
     assert "|  | LINDA MAYS MCCAUL |  |  |  |" in md
     # tx_type is rendered in human form (capitalized) even though it is
     # stored uppercase on the schema.

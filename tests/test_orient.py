@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
 
-from ocr_ptr_pdf_converter.orient import orientation_score, best_rotation
+from ocr_ptr_pdf_converter.orient import best_rotation, orientation_score
 
 
 def _text_image(text: str, rotate: int = 0) -> Image.Image:

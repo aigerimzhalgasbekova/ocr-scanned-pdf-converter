@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image, ImageDraw
 
-from ocr_ptr_pdf_converter.ocr import CellKind, ocr_cell, ink_density
+from ocr_ptr_pdf_converter.ocr import CellKind, ink_density, ocr_cell
 
 
 def _white(w: int = 60, h: int = 40) -> Image.Image:

@@ -162,11 +162,7 @@ def _resolve_competing_marks(
     """Within a single row, only the highest-ink cell among `role_set`
     columns wins (and only if above the winner threshold). Mutates row_texts
     in place. Columns whose role is not in role_set are untouched."""
-    candidates = [
-        (densities[i], i)
-        for i, r in enumerate(roles)
-        if r in role_set
-    ]
+    candidates = [(densities[i], i) for i, r in enumerate(roles) if r in role_set]
     if not candidates:
         return
     best_density, best_idx = max(candidates, key=lambda t: t[0])
@@ -191,9 +187,7 @@ def _process_page(
     for y0, y1 in grid.rows[1:]:
         row_texts: list[str] = []
         densities: list[float] = []
-        for (x0, x1), role, width in zip(
-            grid.cols, roles, col_widths, strict=True
-        ):
+        for (x0, x1), role, width in zip(grid.cols, roles, col_widths, strict=True):
             rect = (x0, y0, x1, y1)
             crop = _crop_pil(oriented, rect)
             bin_crop = _crop_binary(binary, rect)
@@ -273,7 +267,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     doc = _convert_to_document(in_path)
     md = render_markdown(doc)
-    out_path = Path(args.output) if args.output else Path("output") / f"{in_path.stem}.md"
+    out_path = (
+        Path(args.output) if args.output else Path("output") / f"{in_path.stem}.md"
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md)
 

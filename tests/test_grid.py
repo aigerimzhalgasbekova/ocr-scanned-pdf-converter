@@ -53,12 +53,19 @@ def test_cols_from_header_text_synthesizes_bands():
         font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 32)
     except OSError:
         font = ImageFont.load_default()
-    for x, label in [(40, "Holder"), (200, "Asset"), (500, "Transaction"),
-                     (800, "Date"), (1050, "Amount")]:
+    for x, label in [
+        (40, "Holder"),
+        (200, "Asset"),
+        (500, "Transaction"),
+        (800, "Date"),
+        (1050, "Amount"),
+    ]:
         d.text((x, 30), label, fill=0, font=font)
     d.line((0, 100, w, 100), fill=0, width=2)  # one horizontal rule
     d.line((0, 180, w, 180), fill=0, width=2)  # another horizontal rule
     binary = np.array(pil, dtype=np.uint8)
 
     grid = detect_grid(binary)
-    assert len(grid.cols) >= 4, f"fallback should synthesize ≥4 cols, got {len(grid.cols)}"
+    assert len(grid.cols) >= 4, (
+        f"fallback should synthesize ≥4 cols, got {len(grid.cols)}"
+    )

@@ -9,9 +9,7 @@ AMOUNT_CODES: tuple[str, ...] = tuple("ABCDEFGHIJK")
 
 Holder = Literal["JT", "SP", "DC", ""]
 TxType = Literal["PURCHASE", "SALE", "PARTIAL SALE", "EXCHANGE", ""]
-AmountCode = Literal[
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", ""
-]
+AmountCode = Literal["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", ""]
 
 
 @dataclass(frozen=True)

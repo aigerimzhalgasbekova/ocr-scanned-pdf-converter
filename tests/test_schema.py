@@ -9,9 +9,9 @@ from ocr_ptr_pdf_converter.schema import (
 
 
 def test_constants():
-    assert HOLDERS == frozenset({"JT", "SP", "DC"})
+    assert frozenset({"JT", "SP", "DC"}) == HOLDERS
     assert TX_TYPES == ("PURCHASE", "SALE", "PARTIAL SALE", "EXCHANGE")
-    assert AMOUNT_CODES == tuple("ABCDEFGHIJK")
+    assert tuple("ABCDEFGHIJK") == AMOUNT_CODES
 
 
 def test_transaction_row_defaults():
