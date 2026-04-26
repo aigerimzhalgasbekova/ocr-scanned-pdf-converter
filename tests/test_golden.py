@@ -12,6 +12,18 @@ ROW_RE = re.compile(
     r"^\|\s*(?P<holder>[^|]*?)\s*\|\s*(?P<asset>[^|]*?)\s*"
     r"\|\s*(?P<tx>[^|]*?)\s*\|\s*(?P<date>[^|]*?)\s*\|\s*(?P<amount>[^|]*?)\s*\|$"
 )
+_DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
+
+
+def _canonical_date(s: str) -> str:
+    # The expected fixture is internally inconsistent: page 1 uses `3/24/2026`
+    # while later pages use `03/04/2026`. Canonicalize both sides to no leading
+    # zeros so the comparison isn't gated on which page each row came from.
+    m = _DATE_RE.match(s)
+    if not m:
+        return s
+    mo, dy, yr = m.groups()
+    return f"{int(mo)}/{int(dy)}/{yr}"
 
 
 def _data_rows(md: str) -> list[tuple[str, str, str, str, str]]:
@@ -30,7 +42,7 @@ def _data_rows(md: str) -> list[tuple[str, str, str, str, str]]:
                 m["holder"].strip(),
                 m["asset"].strip().upper(),
                 m["tx"].strip(),
-                m["date"].strip(),
+                _canonical_date(m["date"].strip()),
                 m["amount"].strip(),
             )
         )
