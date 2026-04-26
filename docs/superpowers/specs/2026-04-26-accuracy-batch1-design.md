@@ -50,60 +50,85 @@ A row with no holder and no date but with a leaked mark signal (tx_type or amoun
 
 ---
 
-## Fix 2 — LETTER column diagnosis and PSM fix
+## Fix 2 — LETTER/amount column density calibration
 
-**Files:** `scripts/probe_letter_cells.py` (new), `src/ocr_ptr_pdf_converter/ocr.py` (conditional)
+**Files:** `scripts/probe_letter_cells.py` (new), `src/ocr_ptr_pdf_converter/cli.py`
 
-**Problem:** 10 `amount_only_drift` cases, all A→B with one D→K. Systematic +1 shift strongly suggests a crop-offset issue rather than a random PSM failure. Root cause is unknown until we inspect the crops.
+**Problem:** 10 `amount_only_drift` cases, all A→B with one D→K. Root cause: `cli.py::_resolve_competing_marks` picks the highest-ink-density AMOUNT column per row. When ink bleed from the B column slightly exceeds the A column's density, B wins. The tesseract PSM is irrelevant — `_resolve_competing_marks` overwrites every LETTER cell result with "X" or "" based on density, so the final amount letter comes entirely from position (`amount_idx`), not from OCR output.
+
+The current `_MARK_WINNER_DENSITY = 0.05` is too permissive: it allows a near-blank column to win if its bleed density is marginally above 0.05.
 
 ### Step 1 — Probe
 
 Write `scripts/probe_letter_cells.py`:
-- Run the full pipeline on `tests/fixtures/9115728.pdf`
-- For every LETTER cell, save the PIL crop to `/tmp/letter_cells/<page>_<row>_<col>.png`
-- Print a table: `page | row_idx | col_idx | expected | actual | tesseract_raw`
-- Expected letters come from matching rows in `tests/fixtures/9115728_expected.md`
-
-This confirms whether the crop images contain the correct cell or are offset by one column.
+- For each page, detect grid, resolve roles, find AMOUNT column indices
+- For each data row, compute `ink_density` on the binary crop of every AMOUNT column
+- Determine the current winner (highest density ≥ 0.05) and its position letter (A–K)
+- Print: `page | row_idx | densities[A..K] | winner | LOW_MARGIN flag`
+- Flag rows where `winner_density - runner_up_density < 0.03` (likely wrong winner)
 
 ### Step 2 — Fix (conditional on probe findings)
 
-**If crops are correct but PSM wrong:** Switch `--psm 10` to `--psm 8` in `ocr.py::ocr_cell` for `CellKind.LETTER`. Keep the `tessedit_char_whitelist=ABCDEFGHIJK` restriction. The existing `text in _AMOUNT_CODES` guard means a wrong read returns `""` safely.
+Both variants edit `_MARK_WINNER_DENSITY` and/or `_resolve_competing_marks` in `cli.py`.
 
-**If crops are offset:** Fix the column-index mapping in `cli.py::_process_page` — the LETTER column index passed to `_crop_pil` / `_crop_binary` may be off by one.
+**Variant A — raise threshold only** (use when wrong winners appear with density < 0.08):
+```python
+_MARK_WINNER_DENSITY = 0.10  # was 0.05
+```
 
-**Tests:** Add to `tests/test_ocr.py`:
-- Render a small image with a capital "A" and confirm `ocr_cell(..., CellKind.LETTER)` returns `"A"` or `""` (tesseract may miss tiny default-font text, so the test is a guard not a strict assertion)
-- Existing `test_ocr_letter_restricts_to_amount_codes` must still pass
+**Variant B — add margin requirement** (use when correct and incorrect winners both appear with similar densities):
+```python
+_MARK_WINNER_MARGIN = 0.03  # winner must beat runner-up by at least this
+
+def _resolve_competing_marks(row_texts, densities, roles, role_set):
+    candidates = [(densities[i], i) for i, r in enumerate(roles) if r in role_set]
+    if not candidates:
+        return
+    best_density, best_idx = max(candidates, key=lambda t: t[0])
+    if len(candidates) >= 2:
+        runner_up = sorted(candidates, reverse=True)[1][0]
+        margin_ok = best_density - runner_up >= _MARK_WINNER_MARGIN
+    else:
+        margin_ok = True
+    above_threshold = best_density >= _MARK_WINNER_DENSITY and margin_ok
+    for _d, i in candidates:
+        row_texts[i] = "X" if (i == best_idx and above_threshold) else ""
+```
+
+**Decision rule:** Run the probe, count LOW_MARGIN flagged rows. If most flagged rows have wrong winners with densities 0.05–0.09, raise the threshold (Variant A). If some correct winners also appear at low margin, add the margin requirement (Variant B). Apply both if unsure.
+
+**Tests:** Add to `tests/test_cli.py` (or a new `tests/test_resolve_marks.py`):
+- `_resolve_competing_marks` returns winner for clearly dominant cell (density 0.15 vs 0.02)
+- `_resolve_competing_marks` returns no winner when all below threshold
+- With Variant B: returns no winner when winner and runner-up are within margin
 
 ---
 
-## Fix 3 — MARK density calibration
+## Fix 3 — MARK tx-type density calibration
 
-**Files:** `scripts/probe_mark_density.py` (new), `src/ocr_ptr_pdf_converter/ocr.py`
+**Files:** `scripts/probe_mark_density.py` (new), `src/ocr_ptr_pdf_converter/cli.py`
 
-**Problem:** 6 `tx_only_drift` cases are Sale↔Purchase swaps. Current `_MARK_DENSITY_THRESHOLD = 0.06` may be mis-classifying faint or bleed ink in the wrong mark column.
+**Problem:** 6 `tx_only_drift` cases are Sale↔Purchase swaps. Same root cause as Fix 2: `_resolve_competing_marks` picks the wrong tx-type mark column when ink bleed from the Sale column's vertical header text slightly exceeds the Purchase column's density, or vice versa.
 
 ### Step 1 — Probe
 
 Write `scripts/probe_mark_density.py`:
-- Run the pipeline on `tests/fixtures/9115728.pdf`
-- For every row where expected tx_type is known (from golden fixture), extract binary crops for the PURCHASE and SALE columns
-- Compute `ink_density()` for each crop
-- Print table: `page | row_idx | expected_tx | P_density | S_density | actual_tx`
-- Highlight rows where expected_tx != actual_tx
+- For each page, detect grid, resolve roles, find PURCHASE/SALE/PARTIAL_SALE/EXCHANGE column indices
+- For each data row, compute `ink_density` on the binary crop of each tx mark column
+- Determine current winner and its role name
+- Print: `page | row_idx | P_density | S_density | PS_density | EX_density | winner | LOW_MARGIN flag`
+- Flag rows where `winner_density - runner_up_density < 0.02`
 
-This gives the empirical density distribution for marked vs. blank cells.
+### Step 2 — Fix (conditional on probe findings)
 
-### Step 2 — Fix (based on probe findings)
+Same variants as Fix 2, applied to the same `_MARK_WINNER_DENSITY` / `_resolve_competing_marks` in `cli.py`. Fix 2 and Fix 3 share the same mechanism — a single threshold/margin calibration fixes both if the same `_resolve_competing_marks` governs both AMOUNT and TX mark columns (which it does).
 
-**If bimodal with clean separation:** Update `_MARK_DENSITY_THRESHOLD` to the midpoint between the two clusters (e.g. if blanks are ≤0.03 and marks are ≥0.10, set threshold to 0.06 or raise to 0.07).
+**Decision:** Run both probes. If Fix 2's probe already points to a threshold raise that also resolves Fix 3's LOW_MARGIN rows, a single change covers both. If the tx marks need a stricter margin than amount marks, apply Variant B with separate thresholds for each `_resolve_competing_marks` call.
 
-**If marked and blank overlap (ink bleed):** Keep threshold as-is but add a "pick louder mark" tie-breaker in `extract.py::_row_from_cells`: if both PURCHASE and SALE fire above threshold, assign the transaction type to whichever column has the higher density. Store raw densities on the way through — this requires passing density values up through `_row_from_cells`, or passing both the binary crop and the already-computed mark result.
-
-**Tests:** Add to `tests/test_ocr.py`:
-- `ink_density` on a mostly-dark array returns higher value than on a mostly-white array (ordering test)
-- If threshold changes, update any hardcoded threshold references in comments
+**Tests:** Add to `tests/test_cli.py`:
+- `_resolve_competing_marks` for TX roles: correct tx type wins when dominant
+- `_resolve_competing_marks` for TX roles: no winner when all below threshold
+- (Variant B only) no winner when margin too small between Purchase and Sale columns
 
 ---
 
@@ -113,11 +138,11 @@ This gives the empirical density distribution for marked vs. blank cells.
 |---|---|---|---|
 | 1 | Implement garbage filter | `extract.py`, `test_extract.py` | Unit tests pass |
 | 2 | Commit Fix 1, re-run diagnose | — | Measure row delta |
-| 3 | Write + run letter probe | `scripts/probe_letter_cells.py` | Read findings |
-| 4 | Apply Fix 2 based on findings | `ocr.py` or `cli.py`, `test_ocr.py` | Unit tests pass |
-| 5 | Commit Fix 2, re-run diagnose | — | Measure row delta |
-| 6 | Write + run mark density probe | `scripts/probe_mark_density.py` | Read findings |
-| 7 | Apply Fix 3 based on findings | `ocr.py`, `extract.py` (if tie-breaker needed), `test_ocr.py` | Unit tests pass |
-| 8 | Commit Fix 3, re-run diagnose | — | Final batch 1 score |
+| 3 | Write + run amount density probe | `scripts/probe_letter_cells.py` | Read findings |
+| 4 | Write + run tx-mark density probe | `scripts/probe_mark_density.py` | Read findings |
+| 5 | Apply Fix 2 + Fix 3 (shared threshold/margin change) | `cli.py`, `test_cli.py` | Unit tests pass |
+| 6 | Commit Fix 2+3, re-run diagnose | — | Final batch 1 score |
 
 After each commit: `uv run python scripts/diagnose_golden.py` to measure impact.
+
+**Key insight:** Fixes 2 and 3 share the same mechanism (`_resolve_competing_marks` in `cli.py`) and can be tuned in a single commit after running both probes.
