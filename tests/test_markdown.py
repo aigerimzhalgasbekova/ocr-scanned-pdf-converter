@@ -24,7 +24,9 @@ def test_render_minimal_document():
     assert "## Page 1" in md
     assert "| Holder | Asset | Transaction type | Date of transaction | Amount code |" in md
     assert "|  | LINDA MAYS MCCAUL |  |  |  |" in md
-    assert "| SP | EQT CORP COM | PURCHASE | 3/31/2026 | A |" in md
+    # tx_type is rendered in human form (capitalized) even though it is
+    # stored uppercase on the schema.
+    assert "| SP | EQT CORP COM | Purchase | 3/31/2026 | A |" in md
 
 
 def test_render_omits_date_notified_when_empty():

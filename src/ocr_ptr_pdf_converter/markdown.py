@@ -24,9 +24,15 @@ _TABLE_HEADER = (
 )
 
 
+def _format_tx_type(tx_type: str) -> str:
+    """Render UPPERCASE schema tx_type as the human form used in the
+    golden markdown: 'PURCHASE' -> 'Purchase', 'PARTIAL SALE' -> 'Partial sale'."""
+    return tx_type.capitalize() if tx_type else ""
+
+
 def _row_to_md(row: TransactionRow) -> str:
     return (
-        f"| {row.holder} | {row.asset} | {row.transaction_type} "
+        f"| {row.holder} | {row.asset} | {_format_tx_type(row.transaction_type)} "
         f"| {row.date_of_transaction} | {row.amount_code} |"
     )
 
