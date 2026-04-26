@@ -412,6 +412,14 @@ def _is_placeholder(row: TransactionRow) -> bool:
     return bool(_PLACEHOLDER_RE.search(row.asset))
 
 
+def _is_garbage(row: TransactionRow) -> bool:
+    return (
+        not row.holder
+        and not row.date_of_transaction
+        and bool(row.transaction_type or row.amount_code)
+    )
+
+
 def rows_from_cell_texts(
     cell_rows: list[list[str]], roles: list[ColumnRole]
 ) -> list[TransactionRow]:
@@ -423,6 +431,8 @@ def rows_from_cell_texts(
             # empty separator rows that count against over-generation.
             continue
         if _is_placeholder(row):
+            continue
+        if _is_garbage(row):
             continue
         if _is_orphan(row):
             if out and not out[-1].is_section_header and not _is_orphan(out[-1]):

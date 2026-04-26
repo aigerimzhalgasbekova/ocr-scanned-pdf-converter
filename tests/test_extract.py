@@ -113,6 +113,47 @@ def test_tx_type_value_is_case_insensitive():
     ]
 
 
+def test_garbage_row_with_leaked_tx_type_is_dropped():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["", "LINDA MAYS MCCAUL 2006 DESCENDANT TRUST", "Purchase", "", "K"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == []
+
+
+def test_garbage_row_with_leaked_amount_only_is_dropped():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["", "DE FULL", "", "", "A"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert rows == []
+
+
+def test_asset_only_row_is_not_garbage_becomes_section_header():
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["", "LINDA MAYS MCCAUL 1999 EXEMPT TRUST", "", "", ""]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert len(rows) == 1
+    assert rows[0].is_section_header
+    assert rows[0].asset == "LINDA MAYS MCCAUL 1999 EXEMPT TRUST"
+
+
 def test_section_header_row():
     roles = [
         ColumnRole.HOLDER,
