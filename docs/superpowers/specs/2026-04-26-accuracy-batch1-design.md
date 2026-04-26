@@ -30,16 +30,21 @@ These are owner-block names, footer fragments, and OCR noise. They slip through 
 
 ```
 def _is_garbage(row: TransactionRow) -> bool:
-    return not row.holder and not row.date_of_transaction and not row.transaction_type
+    return (
+        not row.holder
+        and not row.date_of_transaction
+        and bool(row.transaction_type or row.amount_code)
+    )
 ```
 
-A row with no holder, no date, and no transaction type is structurally useless regardless of whether it has an asset or amount code. Called in `rows_from_cell_texts` before `_is_empty` and `_is_orphan`. Garbage rows are silently dropped.
+A row with no holder and no date but with a leaked mark signal (tx_type or amount_code) is structurally useless — these come from owner-block rows where OCR reads marks that bleed from adjacent data columns. Called in `rows_from_cell_texts` before `_is_empty` and `_is_orphan`. Garbage rows are silently dropped.
 
-**What this does NOT change:** `_is_orphan` logic (wrapped asset merging) is untouched. Legitimate orphan rows always follow a real data row and get merged, not dropped.
+**What this does NOT change:** Asset-only rows (`transaction_type=''`, `amount_code=''`) are NOT matched by this predicate, so they still flow into `_is_orphan` and get converted to section headers (family holder names like "LINDA MAYS MCCAUL 1999 EXEMPT TRUST"). Legitimate orphan merging is untouched.
 
 **Tests:** Add to `tests/test_extract.py`:
-- Row with `holder='', tx_type='Purchase', date_tx='', amount_code='K'` → dropped
-- Row with `holder='', tx_type='', date_tx='', amount_code='A'` → dropped
+- Row with `holder='', tx_type='Purchase', date_tx='', amount_code='K'` → dropped (leaked mark)
+- Row with `holder='', tx_type='', date_tx='', amount_code='A'` → dropped (leaked amount)
+- Row with `holder='', tx_type='', date_tx='', amount_code=''`, `asset='LINDA MAYS MCCAUL 1999 EXEMPT TRUST'` → NOT dropped, becomes section header via `_is_orphan`
 - Valid row with `holder='SP', asset='...', tx_type='PURCHASE', date_tx='3/24/2026', amount_code='A'` → kept
 - Existing tests must all still pass
 
