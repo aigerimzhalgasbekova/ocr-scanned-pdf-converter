@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image, ImageDraw
 
-from ocr_ptr_pdf_converter.ocr import CellKind, ink_density, ocr_cell
+from ocr_ptr_pdf_converter.ocr import CellKind, _clean_text_cell, ink_density, ocr_cell
 
 
 def _white(w: int = 60, h: int = 40) -> Image.Image:
@@ -58,6 +58,26 @@ def test_ocr_date_extracts_date():
     d.text((10, 10), "3/24/2026", fill="black")
     out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
     assert out == "" or out == "3/24/2026"  # tesseract may miss tiny default font
+
+
+def test_clean_text_cell_strips_edge_column_rules():
+    assert _clean_text_cell("LLM FAMILY INVESTMENTS LP | - |") == "LLM FAMILY INVESTMENTS LP"
+    assert _clean_text_cell("|] LANSING MICH UTIL SYS REV") == "LANSING MICH UTIL SYS REV"
+    assert _clean_text_cell("ARTHUR J GALLAGHER & CO -") == "ARTHUR J GALLAGHER & CO"
+
+
+def test_clean_text_cell_collapses_internal_whitespace():
+    assert _clean_text_cell("LLM   FAMILY  INVESTMENTS LP") == "LLM FAMILY INVESTMENTS LP"
+
+
+def test_clean_text_cell_preserves_clean_input():
+    assert _clean_text_cell("JACKSONVILLE FLA TRANS REV") == "JACKSONVILLE FLA TRANS REV"
+
+
+def test_clean_text_cell_empty():
+    assert _clean_text_cell("") == ""
+    assert _clean_text_cell("   ") == ""
+    assert _clean_text_cell("|||") == ""
 
 
 def test_ocr_letter_restricts_to_amount_codes():
