@@ -153,6 +153,12 @@ def _kind_for_cell(role: ColumnRole, col_width: int) -> CellKind:
     return kind
 
 
+def _looks_collapsed(asset: str) -> bool:
+    """True if the OCR result has a token ≥ 15 chars — a sign of catastrophic
+    kerning collapse where spaces were dropped (e.g. 'MICHBRDWTR&LTUTIL')."""
+    return any(len(token) >= 15 for token in asset.split())
+
+
 def _resolve_competing_marks(
     row_texts: list[str],
     densities: list[float],
@@ -196,7 +202,16 @@ def _process_page(
                 densities.append(0.0)
                 continue
             kind = _kind_for_cell(role, width)
-            row_texts.append(ocr_cell(crop, bin_crop, kind))
+            text = ocr_cell(crop, bin_crop, kind)
+            if role is ColumnRole.ASSET and _looks_collapsed(text):
+                upscaled = crop.resize(
+                    (crop.width * 2, crop.height * 2),
+                    PILImage.Resampling.LANCZOS,
+                )
+                text_2x = ocr_cell(upscaled, bin_crop, kind)
+                if len(text_2x.split()) > len(text.split()):
+                    text = text_2x
+            row_texts.append(text)
             densities.append(ink_density(bin_crop) if bin_crop.size else 0.0)
 
         # Pick a single tx-type mark winner per row to suppress multi-mark
