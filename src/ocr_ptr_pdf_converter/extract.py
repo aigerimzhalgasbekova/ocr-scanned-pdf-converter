@@ -433,6 +433,17 @@ def _is_garbage(row: TransactionRow) -> bool:
     )
 
 
+def _is_noisy_section_header(row: TransactionRow) -> bool:
+    """A long-asset row with no holder and no date, but with OCR bleed in tx_type
+    or amount_code from adjacent cells — should be a section header, not garbage."""
+    return (
+        not row.holder
+        and not row.date_of_transaction
+        and len(row.asset) >= 12
+        and bool(row.transaction_type or row.amount_code)
+    )
+
+
 def rows_from_cell_texts(
     cell_rows: list[list[str]], roles: list[ColumnRole]
 ) -> list[TransactionRow]:
@@ -444,6 +455,9 @@ def rows_from_cell_texts(
             # empty separator rows that count against over-generation.
             continue
         if _is_placeholder(row):
+            continue
+        if _is_noisy_section_header(row):
+            out.append(TransactionRow.section_header(row.asset))
             continue
         if _is_garbage(row):
             continue

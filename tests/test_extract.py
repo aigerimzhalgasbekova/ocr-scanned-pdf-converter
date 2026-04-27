@@ -134,7 +134,9 @@ def test_tx_type_value_is_case_insensitive():
     ]
 
 
-def test_garbage_row_with_leaked_tx_type_is_dropped():
+def test_long_asset_with_leaked_tx_type_becomes_section_header():
+    """A trust-name row (long asset) with leaked tx_type but no date or holder
+    is rescued as a section header rather than being silently dropped."""
     roles = [
         ColumnRole.HOLDER,
         ColumnRole.ASSET,
@@ -144,7 +146,9 @@ def test_garbage_row_with_leaked_tx_type_is_dropped():
     ]
     cells = [["", "LINDA MAYS MCCAUL 2006 DESCENDANT TRUST", "Purchase", "", "K"]]
     rows = rows_from_cell_texts(cells, roles)
-    assert rows == []
+    assert len(rows) == 1
+    assert rows[0].is_section_header
+    assert rows[0].asset == "LINDA MAYS MCCAUL 2006 DESCENDANT TRUST"
 
 
 def test_garbage_row_with_leaked_amount_only_is_dropped():
@@ -250,3 +254,20 @@ def test_form_template_placeholder_rows_are_dropped():
     ]
     rows = rows_from_cell_texts(cells, roles)
     assert rows == []
+
+
+def test_section_header_with_tx_bleed_is_rescued():
+    """A trust-name row with no holder and no date is rescued as a section header
+    even when tx_type and amount_code have OCR bleed from adjacent cells."""
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.PURCHASE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cells = [["", "LINDA MAYS MCCAUL 1999 EXEMPT TRUST", "X", "", "A"]]
+    rows = rows_from_cell_texts(cells, roles)
+    assert len(rows) == 1
+    assert rows[0].is_section_header
+    assert rows[0].asset == "LINDA MAYS MCCAUL 1999 EXEMPT TRUST"
