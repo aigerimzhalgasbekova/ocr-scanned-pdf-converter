@@ -194,17 +194,6 @@ _REAL_SHORT_SUFFIXES = frozenset(
         "CL",
         "SP",
         "JT",
-        "A",
-        "B",
-        "C",
-        "D",
-        "E",
-        "F",
-        "G",
-        "H",
-        "I",
-        "J",
-        "K",
         "L",
         "M",
         "N",
@@ -227,15 +216,34 @@ _REAL_SHORT_SUFFIXES = frozenset(
     }
 )
 
+# Amount-code letters (A-K) that can appear as trailing OCR junk after a
+# company-suffix token (e.g. "INTUIT INC A"). Kept separate from
+# _REAL_SHORT_SUFFIXES so they can receive context-sensitive treatment.
+_AK_LETTERS = frozenset("ABCDEFGHIJK")
+# When an asset ends with a single A-K letter and the preceding token is one
+# of these company suffixes, that trailing letter is OCR bleed, not a share
+# class. "INTUIT INC A" → "INTUIT INC". "CL A" is preserved (prev="CL").
+_COMPANY_TRAILING_SUFFIXES = frozenset(
+    {"INC", "LP", "CORP", "LLC", "CO", "PLC", "ADR", "NV", "AG", "ETF"}
+)
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
-    collapse whitespace, drop trailing tokens that look like OCR remnants
-    (digits-only, punctuation-only, or short non-word ALL-CAPS bleed)."""
+    collapse whitespace, apply pattern fixes, drop trailing OCR remnants."""
     s = raw.strip().lstrip("|}]").rstrip("|}]").strip()
     s = re.sub(r"\s+", " ", s)
     if not s:
         return ""
+    # { or } adjacent to a letter is an OCR curly-brace/I confusion.
+    s = re.sub(r"(?<=[A-Za-z])[{}]|[{}](?=[A-Za-z])", "I", s)
+    # "CLA" / "SHSCLA" → "CL A" / "SHS CL A" (share-class designator).
+    s = re.sub(r"\bCL([A-K])\b", r"CL \1", s)
+    # "ARTHURJ" → "ARTHUR J": last-name initial appended without space.
+    # Require prefix ≥ 6 chars so real surnames like "MCCAUL" are not split.
+    # Restricted to J only: broader chars like L/M/P/T cause false splits in
+    # real words (e.g. ADMIRAL → ADMIRA L).
+    s = re.sub(r"\b([A-Z]{6,})J\b", r"\1 J", s)
     tokens = s.split(" ")
     while tokens:
         t = tokens[-1]
@@ -245,9 +253,14 @@ def _normalize_asset(raw: str) -> str:
         if len(t) <= 2 and t.upper() not in _REAL_SHORT_SUFFIXES and not t.isalpha():
             tokens.pop()
             continue
-        # Drop 1-2 alpha tokens that aren't in our whitelist of real
-        # asset-name suffixes (e.g. 'EE', 'BE', 'oe', 'a', 'j', 's') — these
-        # are common OCR bleed from vertically-printed adjacent mark headers.
+        # Single A-K letter: drop only when preceded by a company-suffix token.
+        # This strips "INTUIT INC A" → "INTUIT INC" while preserving "CL A".
+        if len(t) == 1 and t.upper() in _AK_LETTERS:
+            prev = tokens[-2].upper() if len(tokens) >= 2 else ""
+            if prev in _COMPANY_TRAILING_SUFFIXES:
+                tokens.pop()
+                continue
+            break  # Preceded by something else (e.g. "CL") — keep the letter.
         if len(t) <= 2 and t.isalpha() and t.upper() not in _REAL_SHORT_SUFFIXES:
             tokens.pop()
             continue

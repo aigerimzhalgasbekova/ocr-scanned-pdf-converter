@@ -1,9 +1,30 @@
 from ocr_ptr_pdf_converter.extract import (
     ColumnRole,
+    _normalize_asset,
     classify_header,
     rows_from_cell_texts,
 )
 from ocr_ptr_pdf_converter.schema import TransactionRow
+
+
+def test_normalize_asset_inserts_space_in_cla():
+    assert _normalize_asset("MASTERCARD INCORPORATED CLA") == "MASTERCARD INCORPORATED CL A"
+
+
+def test_normalize_asset_inserts_space_for_initial():
+    assert _normalize_asset("ARTHURJ GALLAGHER & CO") == "ARTHUR J GALLAGHER & CO"
+
+
+def test_normalize_asset_strips_trailing_letter_after_inc():
+    assert _normalize_asset("INTUIT INC A") == "INTUIT INC"
+
+
+def test_normalize_asset_keeps_real_suffix():
+    assert _normalize_asset("BAYER AG SPON ADR") == "BAYER AG SPON ADR"
+
+
+def test_normalize_asset_substitutes_curly_brace_for_i():
+    assert _normalize_asset("LP {NV") == "LP INV"
 
 
 def test_classify_header_single_tx_type_layout():
