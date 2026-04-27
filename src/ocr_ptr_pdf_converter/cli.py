@@ -177,6 +177,43 @@ def _resolve_competing_marks(
         row_texts[i] = "X" if (i == best_idx and above_threshold) else ""
 
 
+def _compute_col_baselines(densities_per_col: list[list[float]]) -> list[float]:
+    """Return min(median, P25) per column. Anchoring at P25 ensures the baseline
+    stays below the unmarked-row floor even when >50% of rows are marked."""
+    baselines: list[float] = []
+    for col_dens in densities_per_col:
+        if not col_dens:
+            baselines.append(0.0)
+        else:
+            median = float(np.median(col_dens))
+            p25 = float(np.percentile(col_dens, 25))
+            baselines.append(min(median, p25))
+    return baselines
+
+
+def _is_single_tx_page(
+    all_row_densities: list[list[float]],
+    col_indices: list[int],
+) -> bool:
+    """Return True if ≥ 80% of rows have the same highest-density column.
+    When True, baseline subtraction is skipped for that role-set to prevent
+    over-correction on pages where all rows share the same tx type."""
+    if not all_row_densities or not col_indices:
+        return False
+    winners: list[int] = []
+    for densities in all_row_densities:
+        candidates = [(densities[i], i) for i in col_indices if i < len(densities)]
+        if not candidates:
+            continue
+        best_d, best_i = max(candidates)
+        if best_d >= _MARK_WINNER_DENSITY:
+            winners.append(best_i)
+    if not winners:
+        return False
+    most_common_count = max(winners.count(i) for i in set(winners))
+    return most_common_count / len(all_row_densities) >= 0.8
+
+
 def _process_page(
     page_image: PILImage.Image, page_number: int
 ) -> tuple[PageResult, list[str]]:
