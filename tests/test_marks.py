@@ -13,9 +13,12 @@ def test_baseline_subtraction_picks_low_density_winner():
     ]
     baselines = _compute_col_baselines(densities_per_col)
     # Row 1 effective densities (0-indexed row 1)
-    eff_row1 = [max(0.0, densities_per_col[col][1] - baselines[col]) for col in range(3)]
+    eff_row1 = [
+        max(0.0, densities_per_col[col][1] - baselines[col]) for col in range(3)
+    ]
     assert eff_row1[1] > eff_row1[0], (
-        f"SALE eff={eff_row1[1]:.3f} should exceed PURCHASE eff={eff_row1[0]:.3f} after baseline"
+        f"SALE eff={eff_row1[1]:.3f} should exceed "
+        f"PURCHASE eff={eff_row1[0]:.3f} after baseline"
     )
 
 
