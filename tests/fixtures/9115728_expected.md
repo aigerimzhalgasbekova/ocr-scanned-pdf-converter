@@ -22,31 +22,32 @@
 
 | Holder | Asset | Transaction type | Date of transaction | Amount code |
 |---|---|---|---|---|
+|  | LLM FAMILY INVESTMENTS II LP |  |  |  |
 | SP | Cedar Holdings LP INV 1292 | Purchase | 3/24/2026 | F |
-| SP | JACKSONVILLE FLA TRANS REV | Purchase | 3/16/2026 | D |
-| SP | TENNESSEE HSG DEV AGY RESIDENTIAL FIN | Purchase | 3/02/2026 | D |
-| SP | BULLOCH CNTY GA DEV AUTH STUDENT HSG REV | Purchase | 3/18/2026 | D |
+| SP | JACKSONVILLE FLA TRANS REV | Purchase | 03/16/2026 | D |
+| SP | TENNESSEE HSG DEV AGY RESIDENTIAL FIN | Purchase | 03/02/2026 | D |
+| SP | BULLOCH CNTY GA DEV AUTH STUDENT HSG REV | Purchase | 03/18/2026 | D |
 | SP | Mays Allocate 2025 LP | Purchase | 3/16/2026 | D |
-| SP | CHEMEKETA ORE CMNTY COLLEGE DIST GO REF | Purchase | 3/05/2026 | D |
-| SP | LANSING MICH BRD WTR & LT UTIL SYS REV | Purchase | 3/27/2026 | D |
-| SP | LOS ANGELES CALIF DEPT ARPTS REV | Purchase | 3/16/2026 | C |
-| SP | ALBANY DOUGHERTY GA PAYROLL DEV AUTH | Purchase | 3/18/2026 | C |
+| SP | CHEMEKETA ORE CMNTY COLLEGE DIST GO REF | Purchase | 03/05/2026 | D |
+| SP | LANSING MICH BRD WTR & LT UTIL SYS REV | Purchase | 03/27/2026 | D |
+| SP | LOS ANGELES CALIF DEPT ARPTS REV | Purchase | 03/16/2026 | C |
+| SP | ALBANY DOUGHERTY GA PAYROLL DEV AUTH | Purchase | 03/18/2026 | C |
 | SP | Mays Allocate LP | Purchase | 3/31/2026 | C |
-| SP | Mays Allocate LP | Purchase | 3/4/2026 | A |
-| SP | Mays Allocate 2025 LP | Purchase | 3/6/2026 | A |
-| SP | INSIGHT ENTERPRISES INC | Purchase | 3/03/2026 | A |
-| SP | EQT CORP COM | Purchase | 3/31/2026 | A |
-| SP | ARTHUR J GALLAGHER & CO | Purchase | 3/04/2026 | A |
-| SP | MASTERCARD INCORPORATED CL A | Purchase | 3/02/2026 | A |
-| SP | S&P GLOBAL INC COM | Purchase | 3/13/2026 | A |
-| SP | ARTHUR J GALLAGHER & CO | Purchase | 3/25/2026 | A |
-| SP | Albany Rd Strategic Opp Fund LLC | Purchase | 3/16/2026 | A |
-| SP | ARTHUR J GALLAGHER & CO | Purchase | 3/12/2026 | A |
+| SP | Mays Allocate LP | Purchase | 3/4/2026 | B |
+| SP | Mays Allocate 2025 LP | Purchase | 3/6/2026 | B |
+| SP | INSIGHT ENTERPRISES INC | Purchase | 03/03/2026 | B |
+| SP | EQT CORP COM | Purchase | 03/31/2026 | B |
+| SP | ARTHUR J GALLAGHER & CO | Purchase | 03/04/2026 | B |
+| SP | MASTERCARD INCORPORATED CL A | Purchase | 03/02/2026 | B |
+| SP | S&P GLOBAL INC COM | Purchase | 03/13/2026 | B |
+| SP | ARTHUR J GALLAGHER & CO | Purchase | 03/25/2026 | B |
+| SP | Albany Rd Strategic Opp Fund LLC | Purchase | 3/16/2026 | B |
+| SP | ARTHUR J GALLAGHER & CO | Purchase | 03/12/2026 | B |
 | SP | Mays Allocate LP | Purchase | 3/16/2026 | A |
-| SP | BOSTON SCIENTIFIC CORP | Purchase | 3/27/2026 | A |
-| SP | INTUIT INC | Purchase | 3/20/2026 | A |
+| SP | BOSTON SCIENTIFIC CORP | Purchase | 03/27/2026 | A |
+| SP | INTUIT INC | Purchase | 03/20/2026 | A |
 | SP | Mays Allocate 2025 LP | Purchase | 3/20/2026 | A |
-| SP | INTUIT INC | Purchase | 3/02/2026 | A |
+| SP | INTUIT INC | Purchase | 03/02/2026 | A |
 
 ## Page 2
 
@@ -57,26 +58,27 @@
 | SP | MERCADOLIBRE INC | Purchase | 03/02/2026 | A |
 | SP | SERVICENOW INC | Purchase | 03/04/2026 | A |
 | SP | MASTERCARD INCORPORATED CL A | Purchase | 03/17/2026 | A |
-| SP | S&P GLOBAL INC COM | Purchase | 03/18/2026 | A |
 | SP | S&P GLOBAL INC COM | Purchase | 03/20/2026 | A |
-| SP | INTUIT INC | Purchase | 03/24/2026 | A |
+| SP | S&P GLOBAL INC COM | Purchase | 03/24/2026 | A |
+| SP | S&P GLOBAL INC COM | Purchase | 03/18/2026 | A |
 | SP | INTUIT INC | Purchase | 03/10/2026 | A |
+| SP | INTUIT INC | Purchase | 03/17/2026 | A |
 | SP | SAP ADR | Purchase | 03/06/2026 | A |
-| SP | SAP ADR | Purchase | 03/12/2026 | A |
+| SP | INTUIT INC | Purchase | 03/12/2026 | A |
 | SP | SAP ADR | Purchase | 03/23/2026 | A |
-| SP | MERCADOLIBRE INC | Purchase | 03/19/2026 | A |
-| SP | AUTODESK INC | Purchase | 03/05/2026 | A |
-| SP | DANAHER CORPORATION COM | Purchase | 03/04/2026 | A |
+| SP | SAP ADR | Purchase | 03/19/2026 | A |
+| SP | MERCADOLIBRE INC | Purchase | 03/12/2026 | A |
+| SP | DANAHER CORPORATION COM | Purchase | 03/05/2026 | A |
+| SP | AUTODESK INC | Purchase | 03/04/2026 | A |
 | SP | LEWIS & CLARK Agrifood Fund II LP | Purchase | 3/31/2026 | A |
 | SP | S&P GLOBAL INC COM | Purchase | 03/17/2026 | A |
-| SP | NORTHERN TAX ADVGT ULTRA SHRT FIXED INC | Purchase | 03/09/2026 | A |
-| SP | AMAZON COM INC | Purchase | 03/27/2026 | A |
-| SP | COMCAST CORP | Purchase | 03/27/2026 | A |
-| SP | COMCAST CORP | Purchase | 03/23/2026 | A |
-| SP | GE VERNOVA INC | Purchase | 03/27/2026 | A |
-| SP | COMCAST CORP | Purchase | 03/12/2026 | A |
-| SP | PTC INC | Purchase | 03/04/2026 | A |
-| SP | BAYER AG SPON ADR | Purchase | 03/17/2026 | A |
+| SP | NORTHERN TAX ADVGT ULTRA SHRT FIXED INC | Sale | 03/09/2026 | A |
+| SP | AMAZON COM INC | Sale | 03/27/2026 | A |
+| SP | COMCAST CORP | Sale | 03/23/2026 | A |
+| SP | GE VERNOVA INC | Sale | 03/27/2026 | A |
+| SP | COMCAST CORP | Sale | 03/12/2026 | A |
+| SP | PTC INC | Sale | 03/04/2026 | A |
+| SP | BAYER AG SPON ADR | Sale | 03/17/2026 | A |
 
 ## Page 3
 
@@ -101,12 +103,12 @@
 | SP | PAYCHEX INC | Purchase | 03/04/2026 | D |
 | SP | ALEXANDRIA REAL ESTATE EQUITIES | Purchase | 03/23/2026 | D |
 | SP | EQUITABLE HLDGS INC COM | Purchase | 03/02/2026 | C |
-| SP | GLOBAL PAYMENTS INC | Purchase | 03/23/2026 | A |
-| SP | STANLEY BLACK & DECKER INC | Purchase | 03/13/2026 | A |
-| SP | BAXTER INTERNATIONAL INC | Purchase | 03/23/2026 | A |
-| SP | GENUINE PARTS CO COM USD1 00 | Purchase | 03/13/2026 | A |
-| SP | INTERNATIONAL BUS MACH CORP | Purchase | 03/04/2026 | A |
-| SP | CHEVRON CORP | Sale | 03/23/2026 | A |
+| SP | GLOBAL PAYMENTS INC | Purchase | 03/23/2026 | B |
+| SP | STANLEY BLACK & DECKER INC | Purchase | 03/13/2026 | B |
+| SP | BAXTER INTERNATIONAL INC | Purchase | 03/23/2026 | B |
+| SP | GENUINE PARTS CO COM USD1 00 | Purchase | 03/13/2026 | B |
+| SP | INTERNATIONAL BUS MACH CORP | Purchase | 03/04/2026 | B |
+| SP | CHEVRON CORP | Sale | 03/23/2026 | B |
 | SP | CHEVRON CORP | Sale | 03/13/2026 | C |
 
 ## Page 4
@@ -126,9 +128,9 @@
 | SP | VANGUARD INDEX FUNDS S&P 500 ETF USD | Purchase | 03/31/2026 | A |
 | SP | VANGUARD TOTAL STOCK MARKET INDEX ADMIRAL | Purchase | 03/27/2026 | A |
 |  | LINDA MAYS MCCAUL 2006 DESCENDANT TRUST |  |  |  |
-| SP | NORTHERN INTERMED TAX EXEMPT FUND | Purchase | 03/24/2026 | A |
-| SP | VANGUARD INDEX FUNDS S&P 500 ETF USD | Purchase | 03/31/2026 | A |
-| SP | VANGUARD TOTAL STOCK MARKET INSTL | Purchase | 03/27/2026 | A |
+| SP | NORTHERN INTERMED TAX EXEMPT FUND | Purchase | 03/24/2026 | B |
+| SP | VANGUARD INDEX FUNDS S&P 500 ETF USD | Purchase | 03/31/2026 | B |
+| SP | VANGUARD TOTAL STOCK MARKET INSTL | Purchase | 03/27/2026 | B |
 | SP | DFA EMERGING MRKTS CORE EQU PORTF | Purchase | 03/30/2026 | A |
 | SP | DIMENSIONAL ETF TRUST INTERNATIONAL CORE EQUITY 2 ETF | Purchase | 03/26/2026 | A |
 | SP | VANGUARD DEVELOPED MARKETS INDEX FUND ETF | Purchase | 03/24/2026 | A |
