@@ -296,15 +296,17 @@ Fix C from accuracy batch 3 (~2 golden rows)."
 **Files:**
 - Create: `scripts/probe_cross_row_assets.py`
 
-- [ ] **Step 1: Identify the misattributed rows**
+- [ ] **Step 1: Identify the misattributed assets by content**
 
-Run the golden test to capture the current asset diffs:
+The golden test (`tests/test_golden.py`) only emits aggregate accuracy plus up to five missed expected-row tuples — it does not preserve page/row positions, and the comparison is multiset-based. So we identify suspects by *asset string*, not coordinates, and let the probe surface the matching grid row in Step 3.
+
+Use the existing diagnostic to capture the actual-vs-expected diff:
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_run.txt
+uv run python scripts/diagnose_golden.py --refresh 2>&1 | tee /tmp/diagnose.txt
 ```
 
-From the output, list the page+row indices where the predicted asset differs from the expected asset (the spec mentions ~3 such rows; e.g. expected `EQT CORP COM`, got `S&P GLOBAL INC COM`). Note them in a comment at the top of the probe script.
+From `/tmp/diagnose.txt`, list every expected asset that has no exact-match counterpart in actual output (i.e. mismatches binned to the asset/spelling category). Record those expected asset strings (e.g. `EQT CORP COM`) in a `# SUSPECTS:` comment at the top of `scripts/probe_cross_row_assets.py` in Step 2. These strings — not page/row indices — drive the probe's targeted output.
 
 - [ ] **Step 2: Write the probe script**
 
@@ -313,18 +315,24 @@ Create `scripts/probe_cross_row_assets.py`:
 ```python
 """Diagnostic probe for Fix E (cross-row asset contamination).
 
-For each suspected misattributed row, prints:
-- grid row Y bounds for the row, the row above, and the row below
-- raw 1x OCR text for the asset cell of all three
-- 2x re-OCR text for the misattributed row (when _looks_collapsed triggers)
+# SUSPECTS:
+#   - <fill in expected asset strings from Step 1 here, one per line>
+
+The probe walks every page, identifies asset cells whose 1x OCR or 2x re-OCR
+contains a substring of any suspect string (or vice versa), and prints —
+for each match — that row's 1x + 2x asset text plus the prev-row and next-row
+1x asset text from the same column. That gives the direct local-bleed
+signature: 2x output of row N matching 1x output of row N-1 or N+1.
 
 Hypothesis: the 2x upscaled crop in cli._process_page pulls ink from the
 adjacent row. If contamination appears only at 2x and not at 1x, tighten
-the upscale crop. If contamination appears at 1x already, root cause is
-grid drift -> deferred to Batch 4.
+the upscale crop. If contamination is already in the 1x pass, root cause
+is grid drift -> deferred to Batch 4.
 
 Usage:
     uv run python scripts/probe_cross_row_assets.py <pdf> [page1 page2 ...]
+
+Edit the SUSPECTS list above before running.
 """
 
 from __future__ import annotations
@@ -332,21 +340,65 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytesseract
 from PIL import Image as PILImage
 
 from ocr_ptr_pdf_converter.cli import (
     _crop_binary,
     _crop_pil,
-    _filter_grid,
     _kind_for_cell,
     _looks_collapsed,
     _orient_and_grid,
     _resolve_roles,
 )
+from ocr_ptr_pdf_converter.extract import ColumnRole
 from ocr_ptr_pdf_converter.ocr import ocr_cell
 from ocr_ptr_pdf_converter.render import render_pdf
-from ocr_ptr_pdf_converter.schema import ColumnRole
+
+# Edit this list to match the expected-asset strings collected in Step 1.
+SUSPECTS: list[str] = [
+    # "EQT CORP COM",
+]
+
+
+def _matches_any_suspect(text: str) -> bool:
+    if not text:
+        return False
+    norm = " ".join(text.upper().split())
+    for s in SUSPECTS:
+        s_norm = " ".join(s.upper().split())
+        if not s_norm:
+            continue
+        if s_norm in norm or norm in s_norm:
+            return True
+    return False
+
+
+def _ocr_asset_for_row(
+    oriented: PILImage.Image,
+    binary,
+    grid_cols: list[tuple[int, int]],
+    asset_col_idx: int,
+    role: ColumnRole,
+    col_width: int,
+    row: tuple[int, int],
+) -> tuple[str, str | None]:
+    x0, x1 = grid_cols[asset_col_idx]
+    y0, y1 = row
+    rect = (x0, y0, x1, y1)
+    crop = _crop_pil(oriented, rect)
+    bin_crop = _crop_binary(binary, rect)
+    if crop.width <= 1 or crop.height <= 1:
+        return ("", None)
+    kind = _kind_for_cell(role, col_width)
+    text_1x = ocr_cell(crop, bin_crop, kind)
+    text_2x: str | None = None
+    if _looks_collapsed(text_1x):
+        up = crop.resize(
+            (crop.width * 2, crop.height * 2),
+            PILImage.Resampling.LANCZOS,
+        )
+        text_2x = ocr_cell(up, bin_crop, kind)
+    return (text_1x, text_2x)
 
 
 def probe_page(image: PILImage.Image, page_number: int) -> None:
@@ -355,36 +407,54 @@ def probe_page(image: PILImage.Image, page_number: int) -> None:
         print(f"page {page_number}: no grid")
         return
     roles = _resolve_roles(grid, oriented)
-    asset_cols = [(i, c) for i, (c, r) in enumerate(zip(grid.cols, roles)) if r is ColumnRole.ASSET]
-    if not asset_cols:
+    asset_indices = [i for i, r in enumerate(roles) if r is ColumnRole.ASSET]
+    if not asset_indices:
         print(f"page {page_number}: no asset column")
         return
     col_widths = [x1 - x0 for x0, x1 in grid.cols]
-    print(f"\n=== page {page_number} (rotation={rotation}) ===")
-    for row_idx, (y0, y1) in enumerate(grid.rows[1:], start=1):
-        for col_idx, (x0, x1) in asset_cols:
-            rect = (x0, y0, x1, y1)
-            crop = _crop_pil(oriented, rect)
-            bin_crop = _crop_binary(binary, rect)
-            if crop.width <= 1 or crop.height <= 1:
+    data_rows = grid.rows[1:]
+
+    # First pass: 1x + 2x asset OCR for every data row, per asset column.
+    per_row: list[dict[int, tuple[str, str | None]]] = []
+    for row in data_rows:
+        col_results: dict[int, tuple[str, str | None]] = {}
+        for col_idx in asset_indices:
+            col_results[col_idx] = _ocr_asset_for_row(
+                oriented, binary, grid.cols, col_idx,
+                roles[col_idx], col_widths[col_idx], row,
+            )
+        per_row.append(col_results)
+
+    # Second pass: emit only rows whose 1x or 2x text matches a suspect string,
+    # plus their immediate neighbors.
+    header_printed = False
+    for row_idx, results in enumerate(per_row):
+        for col_idx, (t1, t2) in results.items():
+            if not (_matches_any_suspect(t1) or _matches_any_suspect(t2 or "")):
                 continue
-            kind = _kind_for_cell(roles[col_idx], col_widths[col_idx])
-            text_1x = ocr_cell(crop, bin_crop, kind)
-            note = ""
-            if _looks_collapsed(text_1x):
-                up = crop.resize(
-                    (crop.width * 2, crop.height * 2),
-                    PILImage.Resampling.LANCZOS,
-                )
-                text_2x = ocr_cell(up, bin_crop, kind)
-                note = f"  2x={text_2x!r}"
-            print(f"row {row_idx:>2} y=[{y0},{y1}] 1x={text_1x!r}{note}")
+            if not header_printed:
+                print(f"\n=== page {page_number} (rotation={rotation}) ===")
+                header_printed = True
+            y0, y1 = data_rows[row_idx]
+            print(f"  row {row_idx:>2} col {col_idx} y=[{y0},{y1}]")
+            print(f"    1x={t1!r}")
+            print(f"    2x={t2!r}")
+            for delta, label in ((-1, "prev"), (1, "next")):
+                n = row_idx + delta
+                if 0 <= n < len(per_row):
+                    nt1, nt2 = per_row[n][col_idx]
+                    ny0, ny1 = data_rows[n]
+                    print(f"    {label} row {n:>2} y=[{ny0},{ny1}] 1x={nt1!r}")
 
 
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 1
+    if not SUSPECTS:
+        print("error: SUSPECTS list at top of this script is empty.", file=sys.stderr)
+        print("Run scripts/diagnose_golden.py first and copy in the missed assets.", file=sys.stderr)
+        return 2
     pdf_path = Path(argv[0])
     pages_arg = [int(p) for p in argv[1:]] or None
     images = render_pdf(pdf_path, dpi=300, pages=pages_arg)
@@ -401,10 +471,10 @@ if __name__ == "__main__":
 - [ ] **Step 3: Run the probe**
 
 ```bash
-uv run python scripts/probe_cross_row_assets.py tests/fixtures/<the golden pdf> 2>&1 | tee /tmp/cross_row_probe.txt
+uv run python scripts/probe_cross_row_assets.py tests/fixtures/9115728.pdf 2>&1 | tee /tmp/cross_row_probe.txt
 ```
 
-(Pick the PDF used by `tests/test_golden.py` — inspect that test if unsure.)
+(`9115728.pdf` is the fixture used by `tests/test_golden.py`.)
 
 - [ ] **Step 4: Inspect output and decide**
 
@@ -470,7 +540,7 @@ Replace with:
 - [ ] **Step 2: Re-run the probe to verify**
 
 ```bash
-uv run python scripts/probe_cross_row_assets.py tests/fixtures/<golden pdf> 2>&1 | tee /tmp/cross_row_after.txt
+uv run python scripts/probe_cross_row_assets.py tests/fixtures/9115728.pdf 2>&1 | tee /tmp/cross_row_after.txt
 ```
 
 Compare against the pre-fix `/tmp/cross_row_probe.txt`. The misattributed rows' 2x output should now match the surrounding 1x text instead of the adjacent-row text.
@@ -526,7 +596,7 @@ from ocr_ptr_pdf_converter.cli import (
     _compute_col_baselines,
     _resolve_competing_marks_gated,
 )
-from ocr_ptr_pdf_converter.schema import ColumnRole
+from ocr_ptr_pdf_converter.extract import ColumnRole
 ```
 
 Then append the three tests:
