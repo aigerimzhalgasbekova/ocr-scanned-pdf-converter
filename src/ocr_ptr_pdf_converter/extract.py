@@ -227,6 +227,14 @@ _COMPANY_TRAILING_SUFFIXES = frozenset(
     {"INC", "LP", "CORP", "LLC", "CO", "PLC", "ADR", "NV", "AG", "ETF"}
 )
 
+# Glued OCR tokens we know how to split. Implemented as an exact-token table
+# rather than a greedy regex so we cannot accidentally split legitimate words.
+_GLUED_TOKEN_SPLITS = {
+    "PLCSHS": "PLC SHS",
+    "EQUPORTF": "EQU PORTF",
+    "EQPORTF": "EQ PORTF",
+}
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
@@ -248,7 +256,13 @@ def _normalize_asset(raw: str) -> str:
     # Restricted to J only: broader chars like L/M/P/T cause false splits in
     # real words (e.g. ADMIRAL → ADMIRA L).
     s = re.sub(r"\b([A-Z]{6,})J\b", r"\1 J", s)
-    tokens = s.split(" ")
+    tokens = []
+    for tok in s.split(" "):
+        replacement = _GLUED_TOKEN_SPLITS.get(tok.upper())
+        if replacement:
+            tokens.extend(replacement.split(" "))
+        else:
+            tokens.append(tok)
     while tokens:
         t = tokens[-1]
         if _NOISE_TOKEN_RE.match(t) or _TRAIL_NOLETTERS_RE.match(t):

@@ -288,3 +288,15 @@ def test_normalize_asset_splits_glued_corp_suffix():
 
 def test_normalize_asset_splits_glued_llc_suffix():
     assert _normalize_asset("FOOLLC") == "FOO LLC"
+
+
+def test_normalize_asset_splits_plcshs_token():
+    assert _normalize_asset("AON PLCSHS CL A") == "AON PLC SHS CL A"
+
+
+def test_normalize_asset_splits_equportf_token():
+    assert _normalize_asset("ALPHA EQUPORTF") == "ALPHA EQU PORTF"
+
+
+def test_normalize_asset_splits_eqportf_token():
+    assert _normalize_asset("BETA EQPORTF") == "BETA EQ PORTF"
