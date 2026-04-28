@@ -82,19 +82,9 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all extract tests PASS (existing + 4 new).
 
-- [ ] **Step 5: Run the golden test and record the accuracy delta**
+- [ ] **Step 5: Commit**
 
-The spec requires the golden run after every fix so any per-fix regression is caught at the commit boundary, not after later risky work lands.
-
-```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_task1.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task1.txt 2>/dev/null; do sleep 180; done
-grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task1.txt
-```
-
-Capture the accuracy number from the `accuracy=X.XX%` line. Compute the delta vs the pre-batch baseline of 76.53% and use it in the commit message below. If accuracy *decreased*, do **not** commit — investigate the regression first (the suffix splitter may be munching tokens the SUSPECTS list didn't anticipate). Tighten the regex (e.g. lower-bound prefix length to 3) and re-run.
-
-- [ ] **Step 6: Commit**
+No golden run here. Tasks 1, 2, 3 all touch only `_normalize_asset` (string regex / predicate) and are covered by the new unit tests. They share a single golden checkpoint at the end of Task 3. If the Task-3 golden regresses, bisect by reverting commits in reverse order (Task 3 → Task 2 → Task 1). This avoids three consecutive 10-minute golden runs.
 
 ```bash
 git add src/ocr_ptr_pdf_converter/extract.py tests/test_extract.py
@@ -104,8 +94,7 @@ Adds a regex in _normalize_asset that turns INTUITINC → INTUIT INC,
 PTCINC → PTC INC, etc. Suffix list is closed (INC|LLC|CORP|PLC) so
 the rule cannot split legitimate tokens.
 
-Fix B from accuracy batch 3.
-Golden accuracy: <X.XX%> (Δ vs 76.53% baseline: <+/-Y.YY%>)."
+Fix B from accuracy batch 3 (golden verified at end of Task 3)."
 ```
 
 ---
@@ -181,17 +170,9 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all extract tests PASS.
 
-- [ ] **Step 5: Run the golden test and record the accuracy delta**
+- [ ] **Step 5: Commit**
 
-```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_task2.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task2.txt 2>/dev/null; do sleep 180; done
-grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task2.txt
-```
-
-Capture the accuracy number. Compare against `/tmp/golden_task1.txt` from Task 1. If accuracy decreased relative to Task 1, do **not** commit — the substitution table is munching a token it shouldn't. Narrow the table or remove the offending entry, then re-run.
-
-- [ ] **Step 6: Commit**
+No golden run here — see Task 1 Step 5 for the rationale (B+B+C share a single golden gate at the end of Task 3).
 
 ```bash
 git add src/ocr_ptr_pdf_converter/extract.py tests/test_extract.py
@@ -202,8 +183,7 @@ glued tokens we observed in golden output expand back to their
 canonical multi-word forms. Table is exact-match so it cannot munch
 legitimate words.
 
-Fix B (continued) from accuracy batch 3.
-Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
+Fix B (continued) from accuracy batch 3 (golden verified at end of Task 3)."
 ```
 
 ---
@@ -298,15 +278,37 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all PASS (including the two new ones plus all prior tests — verify the prior tail-trim behavior for non-anchored numerics like a stray trailing `7` is unaffected).
 
-- [ ] **Step 5: Run the golden test and record the accuracy delta**
+- [ ] **Step 5: Run the golden test (gate for B+B+C) using the Bash tool's background flag**
 
-```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_task3.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task3.txt 2>/dev/null; do sleep 180; done
-grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task3.txt
-```
+This is the single golden checkpoint covering the three string-normalization fixes (Tasks 1, 2, 3). The previous attempts to background pytest with shell `&` failed because (a) shell state does not persist between Bash tool invocations and (b) a 10-min `until sleep 300` loop exceeds the Bash tool's 600s timeout. The reliable primitive is the Bash tool's own `run_in_background: true` flag, which detaches the process under the harness rather than under the shell.
 
-Capture the accuracy number. Compare against `/tmp/golden_task2.txt`. If accuracy decreased relative to Task 2, do **not** commit — the predicate is over-protecting numerics elsewhere. Tighten the anchor list (e.g. drop `COM` if it triggers on table-rule junk) and re-run.
+**How to run it:**
+
+1. Issue a Bash tool call with `run_in_background: true` and `command`:
+
+   ```
+   uv run pytest tests/test_golden.py -v > /tmp/golden_task3.txt 2>&1
+   ```
+
+   The tool returns immediately with a shell ID. Do **not** add `&` — the harness handles detachment.
+
+2. Poll the output file every ~3 minutes with short, non-backgrounded Bash calls:
+
+   ```bash
+   grep -qE 'passed|failed|error' /tmp/golden_task3.txt && echo DONE || echo RUNNING
+   ```
+
+   When the call prints `DONE`, proceed.
+
+3. Capture the accuracy line:
+
+   ```bash
+   grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task3.txt
+   ```
+
+If you have access to `ScheduleWakeup`, prefer scheduling a wake-up in 600s after launching the background task instead of polling — same end result, less context spent on poll iterations.
+
+**Decision rule:** the captured accuracy must be > 76.53% (the pre-batch baseline). If it dropped, do **not** commit Task 3. Bisect by reverting Task 3's pending changes first, then Task 2, then Task 1, re-running golden after each revert until accuracy recovers.
 
 - [ ] **Step 6: Commit**
 
@@ -321,7 +323,7 @@ CO COM USD1 00'. New rule: keep digit-only trailing tokens of length
 explicit numeric-tail anchors (INV, COM, USD1).
 
 Fix C from accuracy batch 3.
-Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
+Golden accuracy after B+C batch: <X.XX%> (Δ vs 76.53% baseline: <+/-Y.YY%>)."
 ```
 
 ---
@@ -577,17 +579,21 @@ uv run pytest --ignore=tests/test_golden.py -v
 
 Expected: all PASS.
 
-- [ ] **Step 4: Run the golden test and record the accuracy delta**
+- [ ] **Step 4: Run the golden test using the Bash tool's background flag**
 
-Fix E touches the production OCR path, so the golden run is required before this commit (per the spec's per-fix verification rule).
+Fix E touches the production OCR path, so the golden run is required before this commit. Use the same primitive as Task 3 Step 5 — issue a Bash tool call with `run_in_background: true`:
+
+```
+uv run pytest tests/test_golden.py -v > /tmp/golden_task5.txt 2>&1
+```
+
+Then poll `/tmp/golden_task5.txt` with short Bash calls until `passed`, `failed`, or `error` appears, and capture the accuracy:
 
 ```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_task5.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task5.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task5.txt
 ```
 
-Capture the accuracy number. Compare against `/tmp/golden_task3.txt`. If accuracy decreased, do **not** commit — the 1px trim is removing in-row ink on tight crops. Restore the file with `git restore --source=HEAD --worktree src/ocr_ptr_pdf_converter/cli.py` and skip Task 5 (defer Fix E to Batch 4).
+Compare against the value recorded in the Task 3 commit message. If accuracy decreased, do **not** commit — the 1px trim is removing in-row ink on tight crops. Restore the file with `git restore --source=HEAD --worktree src/ocr_ptr_pdf_converter/cli.py` and skip Task 5 (defer Fix E to Batch 4).
 
 - [ ] **Step 5: Commit**
 
@@ -845,11 +851,17 @@ That brings both files back to their last-committed state (which is the post-Fix
 
 Note: do not commit Task 6 until Step 7's probe and Step 8's golden run both pass. If a regression is discovered *after* the Task 6 commit lands, recover with `git revert <commit-sha>` (single-commit revert) — never with a tree-wide `git restore` or `git reset --hard`. The per-fix-commit architecture in the spec exists precisely so any one fix can be reverted in isolation.
 
-- [ ] **Step 8: Run the golden test**
+- [ ] **Step 8: Run the golden test using the Bash tool's background flag**
+
+Same primitive as Task 3 / Task 5 — issue a Bash tool call with `run_in_background: true`:
+
+```
+uv run pytest tests/test_golden.py -v > /tmp/golden_task6.txt 2>&1
+```
+
+Poll `/tmp/golden_task6.txt` with short Bash calls until `passed`, `failed`, or `error` appears. Capture:
 
 ```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_task6.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task6.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task6.txt
 ```
 
@@ -907,15 +919,19 @@ uv run pytest --ignore=tests/test_golden.py -v
 
 Expected: all PASS.
 
-- [ ] **Step 4: Run the golden test and record accuracy**
+- [ ] **Step 4: Run the golden test using the Bash tool's background flag**
 
-```bash
-uv run pytest tests/test_golden.py -v > /tmp/golden_final.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_final.txt 2>/dev/null; do sleep 180; done
-grep -oE 'accuracy=[0-9.]+%' /tmp/golden_final.txt
+Same primitive as Task 3 / 5 / 6 — issue a Bash tool call with `run_in_background: true`:
+
+```
+uv run pytest tests/test_golden.py -v > /tmp/golden_final.txt 2>&1
 ```
 
-Capture the exact accuracy number from the output.
+Poll `/tmp/golden_final.txt` with short Bash calls until `passed`, `failed`, or `error` appears. Capture:
+
+```bash
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_final.txt
+```
 
 - [ ] **Step 5: Commit lint fixes (if any) with the accuracy delta in the message**
 
@@ -959,8 +975,9 @@ EOF
 
 ## Self-Review Checklist (already applied)
 
-- **Spec coverage:** every spec section maps to a task. Fix B → Tasks 1+2. Fix C → Task 3. Fix E → Tasks 4 (probe) + 5 (conditional). Fix A+D → Task 6. Lint/mypy/golden → Task 7. Page-1 regression guard → Task 6 Step 7 (probe re-run before commit). Per-fix golden verification → golden-run step in every production-change task before its commit (Tasks 1, 2, 3, 5, 6).
-- **Placeholders:** none. Every code block is concrete; the `<X.XX%>` / `<+/-Y.YY%>` markers in commit messages are filled in by the worker from the captured `/tmp/golden_taskN.txt` output.
+- **Spec coverage:** every spec section maps to a task. Fix B → Tasks 1+2. Fix C → Task 3. Fix E → Tasks 4 (probe) + 5 (conditional). Fix A+D → Task 6. Lint/mypy/golden → Task 7. Page-1 regression guard → Task 6 Step 7 (probe re-run before commit). Golden verification gates: one shared gate at end of Task 3 (covering Tasks 1+2+3, all `_normalize_asset` regex / predicate edits with unit-test coverage), one at Task 5 (OCR upscale path), one at Task 6 (margin-gated resolver), one final at Task 7. Tasks 1 and 2 commit without a golden run because their changes are dominated by `_normalize_asset` unit tests and any regression they cause is recoverable by reverting their commits in reverse order after the Task 3 gate.
+- **Placeholders:** none. Every code block is concrete; the `<X.XX%>` / `<+/-Y.YY%>` markers in commit messages are filled in by the worker from the captured `/tmp/golden_*.txt` output.
+- **Golden execution primitive:** all golden runs go through the Bash tool's `run_in_background: true` flag (not shell `&`). Shell-backgrounded processes do not survive between Bash tool invocations because shell state does not persist; a 10-min `until sleep 300` loop also exceeds the Bash tool's 600s max timeout. The `run_in_background` flag detaches under the harness, which does survive across tool calls. Workers poll the output file with short Bash calls until the test prints a terminal status.
 - **Type consistency:** new helper is named `_resolve_competing_marks_gated` everywhere (definition, import, call sites). `_MARGIN_THRESHOLD`, `_MARK_WINNER_DENSITY`, `_compute_col_baselines`, `_TX_MARK_ROLE_SET`, `ColumnRole.AMOUNT` match existing names in `cli.py`.
 - **Conditional logic:** Task 5 has an explicit skip predicate stated up front; Task 6 Step 7 has an explicit single-file rollback procedure that preserves earlier B/C/E commits (no tree-wide `git restore`).
 - **Fix E false-negative protection:** Task 4 probe enumerates every 2x-triggered or 1x-vs-2x-differing asset cell rather than substring-filtering against expected asset strings. The fully-substituted-neighbor case (`EQT CORP COM` → `S&P GLOBAL INC COM`) is exposed because both cells appear in the exhaustive emission, regardless of whether either string is a substring of the other.
