@@ -87,10 +87,12 @@ Expected: all extract tests PASS (existing + 4 new).
 The spec requires the golden run after every fix so any per-fix regression is caught at the commit boundary, not after later risky work lands.
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task1.txt
+uv run pytest tests/test_golden.py -v > /tmp/golden_task1.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_task1.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task1.txt
 ```
 
-Capture the accuracy number from the tail of the output (the test prints `accuracy=X.XX%`). Compute the delta vs the pre-batch baseline of 76.53% and use it in the commit message below. If accuracy *decreased*, do **not** commit — investigate the regression first (the suffix splitter may be munching tokens the SUSPECTS list didn't anticipate). Tighten the regex (e.g. lower-bound prefix length to 3) and re-run.
+Capture the accuracy number from the `accuracy=X.XX%` line. Compute the delta vs the pre-batch baseline of 76.53% and use it in the commit message below. If accuracy *decreased*, do **not** commit — investigate the regression first (the suffix splitter may be munching tokens the SUSPECTS list didn't anticipate). Tighten the regex (e.g. lower-bound prefix length to 3) and re-run.
 
 - [ ] **Step 6: Commit**
 
@@ -182,7 +184,9 @@ Expected: all extract tests PASS.
 - [ ] **Step 5: Run the golden test and record the accuracy delta**
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task2.txt
+uv run pytest tests/test_golden.py -v > /tmp/golden_task2.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_task2.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task2.txt
 ```
 
 Capture the accuracy number. Compare against `/tmp/golden_task1.txt` from Task 1. If accuracy decreased relative to Task 1, do **not** commit — the substitution table is munching a token it shouldn't. Narrow the table or remove the offending entry, then re-run.
@@ -297,7 +301,9 @@ Expected: all PASS (including the two new ones plus all prior tests — verify t
 - [ ] **Step 5: Run the golden test and record the accuracy delta**
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task3.txt
+uv run pytest tests/test_golden.py -v > /tmp/golden_task3.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_task3.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task3.txt
 ```
 
 Capture the accuracy number. Compare against `/tmp/golden_task2.txt`. If accuracy decreased relative to Task 2, do **not** commit — the predicate is over-protecting numerics elsewhere. Tighten the anchor list (e.g. drop `COM` if it triggers on table-rule junk) and re-run.
@@ -576,7 +582,9 @@ Expected: all PASS.
 Fix E touches the production OCR path, so the golden run is required before this commit (per the spec's per-fix verification rule).
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task5.txt
+uv run pytest tests/test_golden.py -v > /tmp/golden_task5.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_task5.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task5.txt
 ```
 
 Capture the accuracy number. Compare against `/tmp/golden_task3.txt`. If accuracy decreased, do **not** commit — the 1px trim is removing in-row ink on tight crops. Restore the file with `git restore --source=HEAD --worktree src/ocr_ptr_pdf_converter/cli.py` and skip Task 5 (defer Fix E to Batch 4).
@@ -840,10 +848,12 @@ Note: do not commit Task 6 until Step 7's probe and Step 8's golden run both pas
 - [ ] **Step 8: Run the golden test**
 
 ```bash
-uv run pytest tests/test_golden.py -v
+uv run pytest tests/test_golden.py -v > /tmp/golden_task6.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_task6.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task6.txt
 ```
 
-Expected: accuracy strictly greater than 76.53%. (The test takes ~10 min; run with `timeout` if iterating.)
+Expected: accuracy strictly greater than 76.53%.
 
 - [ ] **Step 9: Commit**
 
@@ -900,7 +910,9 @@ Expected: all PASS.
 - [ ] **Step 4: Run the golden test and record accuracy**
 
 ```bash
-uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_final.txt
+uv run pytest tests/test_golden.py -v > /tmp/golden_final.txt 2>&1 &
+until grep -qE "passed|failed|error" /tmp/golden_final.txt 2>/dev/null; do sleep 30; done
+grep -oE 'accuracy=[0-9.]+%' /tmp/golden_final.txt
 ```
 
 Capture the exact accuracy number from the output.
