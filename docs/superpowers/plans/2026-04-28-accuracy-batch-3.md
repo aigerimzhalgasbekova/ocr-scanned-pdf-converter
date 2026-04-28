@@ -82,7 +82,17 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all extract tests PASS (existing + 4 new).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the golden test and record the accuracy delta**
+
+The spec requires the golden run after every fix so any per-fix regression is caught at the commit boundary, not after later risky work lands.
+
+```bash
+uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task1.txt
+```
+
+Capture the accuracy number from the tail of the output (the test prints `accuracy=X.XX%`). Compute the delta vs the pre-batch baseline of 76.53% and use it in the commit message below. If accuracy *decreased*, do **not** commit — investigate the regression first (the suffix splitter may be munching tokens the SUSPECTS list didn't anticipate). Tighten the regex (e.g. lower-bound prefix length to 3) and re-run.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/ocr_ptr_pdf_converter/extract.py tests/test_extract.py
@@ -92,7 +102,8 @@ Adds a regex in _normalize_asset that turns INTUITINC → INTUIT INC,
 PTCINC → PTC INC, etc. Suffix list is closed (INC|LLC|CORP|PLC) so
 the rule cannot split legitimate tokens.
 
-Fix B from accuracy batch 3 (~5 golden rows)."
+Fix B from accuracy batch 3.
+Golden accuracy: <X.XX%> (Δ vs 76.53% baseline: <+/-Y.YY%>)."
 ```
 
 ---
@@ -168,7 +179,15 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all extract tests PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the golden test and record the accuracy delta**
+
+```bash
+uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task2.txt
+```
+
+Capture the accuracy number. Compare against `/tmp/golden_task1.txt` from Task 1. If accuracy decreased relative to Task 1, do **not** commit — the substitution table is munching a token it shouldn't. Narrow the table or remove the offending entry, then re-run.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/ocr_ptr_pdf_converter/extract.py tests/test_extract.py
@@ -179,7 +198,8 @@ glued tokens we observed in golden output expand back to their
 canonical multi-word forms. Table is exact-match so it cannot munch
 legitimate words.
 
-Fix B (continued) from accuracy batch 3."
+Fix B (continued) from accuracy batch 3.
+Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
 ```
 
 ---
@@ -274,7 +294,15 @@ uv run pytest tests/test_extract.py -v
 
 Expected: all PASS (including the two new ones plus all prior tests — verify the prior tail-trim behavior for non-anchored numerics like a stray trailing `7` is unaffected).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Run the golden test and record the accuracy delta**
+
+```bash
+uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task3.txt
+```
+
+Capture the accuracy number. Compare against `/tmp/golden_task2.txt`. If accuracy decreased relative to Task 2, do **not** commit — the predicate is over-protecting numerics elsewhere. Tighten the anchor list (e.g. drop `COM` if it triggers on table-rule junk) and re-run.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/ocr_ptr_pdf_converter/extract.py tests/test_extract.py
@@ -286,7 +314,8 @@ CO COM USD1 00'. New rule: keep digit-only trailing tokens of length
 ≤ 4 when the prior token is in _REAL_SHORT_SUFFIXES or one of the
 explicit numeric-tail anchors (INV, COM, USD1).
 
-Fix C from accuracy batch 3 (~2 golden rows)."
+Fix C from accuracy batch 3.
+Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
 ```
 
 ---
@@ -296,17 +325,19 @@ Fix C from accuracy batch 3 (~2 golden rows)."
 **Files:**
 - Create: `scripts/probe_cross_row_assets.py`
 
-- [ ] **Step 1: Identify the misattributed assets by content**
+- [ ] **Step 1: Capture the actual-vs-expected diff for cross-reference**
 
-The golden test (`tests/test_golden.py`) only emits aggregate accuracy plus up to five missed expected-row tuples — it does not preserve page/row positions, and the comparison is multiset-based. So we identify suspects by *asset string*, not coordinates, and let the probe surface the matching grid row in Step 3.
+Per-row coordinates are not available from `tests/test_golden.py` (it emits aggregate accuracy + up to 5 missed-row tuples and uses multiset comparison). Substring-matching expected asset strings against OCR output is also unsafe: in the stated failure mode (e.g. `EQT CORP COM` came out as `S&P GLOBAL INC COM`), neither string is a substring of the other, so any such filter would silently miss the contamination by construction.
 
-Use the existing diagnostic to capture the actual-vs-expected diff:
+The probe in Step 2 therefore does **not** filter by suspect strings at all. It enumerates every asset cell on every page, runs both the 1x and 2x OCR paths unconditionally, and emits the 1x text, 2x text, and the prev/next-row 1x text for the same column whenever the 2x output differs from the 1x output OR whenever `_looks_collapsed(text_1x)` triggered. That is exhaustive over the only code path that can cause local contamination per the design hypothesis, so the diagnostic cannot have false negatives — including the fully-substituted-neighbor case where neither expected nor actual asset string is a substring of the other.
+
+Capture the diagnose output anyway as cross-reference for inspection — it tells you which expected/actual asset strings to look for in the probe output:
 
 ```bash
 uv run python scripts/diagnose_golden.py --refresh 2>&1 | tee /tmp/diagnose.txt
 ```
 
-From `/tmp/diagnose.txt`, list every expected asset that has no exact-match counterpart in actual output (i.e. mismatches binned to the asset/spelling category). Record those expected asset strings (e.g. `EQT CORP COM`) in a `# SUSPECTS:` comment at the top of `scripts/probe_cross_row_assets.py` in Step 2. These strings — not page/row indices — drive the probe's targeted output.
+`diagnose_golden.py` prints both unmatched-expected rows and extra-actual rows. Note both lists for use during Step 4 inspection: a contamination signature is when a row's 2x OCR text matches a neighbor's 1x text, AND that row's content appears in the extra-actual list while a neighbor's expected asset appears in the missing-expected list.
 
 - [ ] **Step 2: Write the probe script**
 
@@ -315,14 +346,18 @@ Create `scripts/probe_cross_row_assets.py`:
 ```python
 """Diagnostic probe for Fix E (cross-row asset contamination).
 
-# SUSPECTS:
-#   - <fill in expected asset strings from Step 1 here, one per line>
+The probe walks every page, runs 1x and 2x OCR on every asset cell, and
+prints — for every cell where the 2x path triggered (`_looks_collapsed`)
+or where 2x output differs from 1x — that row's 1x + 2x asset text plus
+the prev-row and next-row 1x asset text from the same column. That gives
+the direct local-bleed signature: 2x output of row N matching 1x output
+of row N-1 or N+1.
 
-The probe walks every page, identifies asset cells whose 1x OCR or 2x re-OCR
-contains a substring of any suspect string (or vice versa), and prints —
-for each match — that row's 1x + 2x asset text plus the prev-row and next-row
-1x asset text from the same column. That gives the direct local-bleed
-signature: 2x output of row N matching 1x output of row N-1 or N+1.
+The probe deliberately does NOT filter by expected-asset substring. In the
+documented failure mode (`EQT CORP COM` -> `S&P GLOBAL INC COM`) neither
+string contains the other, so substring filtering would silently miss the
+contamination. Exhaustive enumeration over the 2x code path is the only
+sound diagnostic.
 
 Hypothesis: the 2x upscaled crop in cli._process_page pulls ink from the
 adjacent row. If contamination appears only at 2x and not at 1x, tighten
@@ -331,8 +366,6 @@ is grid drift -> deferred to Batch 4.
 
 Usage:
     uv run python scripts/probe_cross_row_assets.py <pdf> [page1 page2 ...]
-
-Edit the SUSPECTS list above before running.
 """
 
 from __future__ import annotations
@@ -354,24 +387,6 @@ from ocr_ptr_pdf_converter.extract import ColumnRole
 from ocr_ptr_pdf_converter.ocr import ocr_cell
 from ocr_ptr_pdf_converter.render import render_pdf
 
-# Edit this list to match the expected-asset strings collected in Step 1.
-SUSPECTS: list[str] = [
-    # "EQT CORP COM",
-]
-
-
-def _matches_any_suspect(text: str) -> bool:
-    if not text:
-        return False
-    norm = " ".join(text.upper().split())
-    for s in SUSPECTS:
-        s_norm = " ".join(s.upper().split())
-        if not s_norm:
-            continue
-        if s_norm in norm or norm in s_norm:
-            return True
-    return False
-
 
 def _ocr_asset_for_row(
     oriented: PILImage.Image,
@@ -381,24 +396,27 @@ def _ocr_asset_for_row(
     role: ColumnRole,
     col_width: int,
     row: tuple[int, int],
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, bool]:
+    """Return (text_1x, text_2x_or_None, looks_collapsed_triggered)."""
     x0, x1 = grid_cols[asset_col_idx]
     y0, y1 = row
     rect = (x0, y0, x1, y1)
     crop = _crop_pil(oriented, rect)
     bin_crop = _crop_binary(binary, rect)
     if crop.width <= 1 or crop.height <= 1:
-        return ("", None)
+        return ("", None, False)
     kind = _kind_for_cell(role, col_width)
     text_1x = ocr_cell(crop, bin_crop, kind)
-    text_2x: str | None = None
-    if _looks_collapsed(text_1x):
-        up = crop.resize(
-            (crop.width * 2, crop.height * 2),
-            PILImage.Resampling.LANCZOS,
-        )
-        text_2x = ocr_cell(up, bin_crop, kind)
-    return (text_1x, text_2x)
+    triggered = _looks_collapsed(text_1x)
+    # Always run 2x so we can see contamination even on rows where the
+    # production code would not have re-OCR'd. Cheap relative to one
+    # golden run and removes another false-negative path.
+    up = crop.resize(
+        (crop.width * 2, crop.height * 2),
+        PILImage.Resampling.LANCZOS,
+    )
+    text_2x = ocr_cell(up, bin_crop, kind)
+    return (text_1x, text_2x, triggered)
 
 
 def probe_page(image: PILImage.Image, page_number: int) -> None:
@@ -415,9 +433,9 @@ def probe_page(image: PILImage.Image, page_number: int) -> None:
     data_rows = grid.rows[1:]
 
     # First pass: 1x + 2x asset OCR for every data row, per asset column.
-    per_row: list[dict[int, tuple[str, str | None]]] = []
+    per_row: list[dict[int, tuple[str, str | None, bool]]] = []
     for row in data_rows:
-        col_results: dict[int, tuple[str, str | None]] = {}
+        col_results: dict[int, tuple[str, str | None, bool]] = {}
         for col_idx in asset_indices:
             col_results[col_idx] = _ocr_asset_for_row(
                 oriented, binary, grid.cols, col_idx,
@@ -425,24 +443,28 @@ def probe_page(image: PILImage.Image, page_number: int) -> None:
             )
         per_row.append(col_results)
 
-    # Second pass: emit only rows whose 1x or 2x text matches a suspect string,
-    # plus their immediate neighbors.
+    # Second pass: emit every row where 2x triggered in production OR where
+    # 2x output differs from 1x output (covers contamination cases the 1x
+    # path may already exhibit). Always include immediate neighbors so the
+    # cross-row signature is visible.
     header_printed = False
     for row_idx, results in enumerate(per_row):
-        for col_idx, (t1, t2) in results.items():
-            if not (_matches_any_suspect(t1) or _matches_any_suspect(t2 or "")):
+        for col_idx, (t1, t2, triggered) in results.items():
+            differs = (t2 or "") != t1
+            if not (triggered or differs):
                 continue
             if not header_printed:
                 print(f"\n=== page {page_number} (rotation={rotation}) ===")
                 header_printed = True
             y0, y1 = data_rows[row_idx]
-            print(f"  row {row_idx:>2} col {col_idx} y=[{y0},{y1}]")
+            flag = "TRIG" if triggered else "diff"
+            print(f"  [{flag}] row {row_idx:>2} col {col_idx} y=[{y0},{y1}]")
             print(f"    1x={t1!r}")
             print(f"    2x={t2!r}")
             for delta, label in ((-1, "prev"), (1, "next")):
                 n = row_idx + delta
                 if 0 <= n < len(per_row):
-                    nt1, nt2 = per_row[n][col_idx]
+                    nt1, _nt2, _ntr = per_row[n][col_idx]
                     ny0, ny1 = data_rows[n]
                     print(f"    {label} row {n:>2} y=[{ny0},{ny1}] 1x={nt1!r}")
 
@@ -451,10 +473,6 @@ def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
         return 1
-    if not SUSPECTS:
-        print("error: SUSPECTS list at top of this script is empty.", file=sys.stderr)
-        print("Run scripts/diagnose_golden.py first and copy in the missed assets.", file=sys.stderr)
-        return 2
     pdf_path = Path(argv[0])
     pages_arg = [int(p) for p in argv[1:]] or None
     images = render_pdf(pdf_path, dpi=300, pages=pages_arg)
@@ -551,9 +569,19 @@ Compare against the pre-fix `/tmp/cross_row_probe.txt`. The misattributed rows' 
 uv run pytest --ignore=tests/test_golden.py -v
 ```
 
-Expected: all PASS. (Golden runs separately at the end; ~10 min.)
+Expected: all PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Run the golden test and record the accuracy delta**
+
+Fix E touches the production OCR path, so the golden run is required before this commit (per the spec's per-fix verification rule).
+
+```bash
+uv run pytest tests/test_golden.py -v 2>&1 | tee /tmp/golden_task5.txt
+```
+
+Capture the accuracy number. Compare against `/tmp/golden_task3.txt`. If accuracy decreased, do **not** commit — the 1px trim is removing in-row ink on tight crops. Restore the file with `git restore --source=HEAD --worktree src/ocr_ptr_pdf_converter/cli.py` and skip Task 5 (defer Fix E to Batch 4).
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/ocr_ptr_pdf_converter/cli.py
@@ -563,7 +591,8 @@ Probe (scripts/probe_cross_row_assets.py) showed the 2x upscaled crop
 was pulling ink from the adjacent row. Trimming 1px top/bottom before
 LANCZOS resize removes the bleed without affecting the in-row glyphs.
 
-Fix E from accuracy batch 3 (~3-5 golden rows)."
+Fix E from accuracy batch 3.
+Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
 ```
 
 ---
@@ -797,7 +826,16 @@ uv run python scripts/probe_baseline_marks.py 2>&1 | tee /tmp/probe_after_ad.txt
 
 Inspect the output: every page-1 row's TX winner must be `PURCHASE` (matching the pre-batch state). If any page-1 row flipped to a different winner, **stop** — do not commit. Adjust `_MARGIN_THRESHOLD` upward (e.g. 0.07, 0.10) until page-1 winners are stable, then re-run.
 
-If after reasonable threshold tuning page-1 still regresses, abort Fix A+D: `git restore .` and skip to Task 7 with Fixes B/C(/E) only.
+If after reasonable threshold tuning page-1 still regresses, abort Fix A+D with an isolated rollback that preserves the already-committed B/C(/E) work and any unrelated tree state. Restore **only** the two files this task touched — never use `git restore .`:
+
+```bash
+git restore --source=HEAD --worktree --staged \
+    src/ocr_ptr_pdf_converter/cli.py tests/test_marks.py
+```
+
+That brings both files back to their last-committed state (which is the post-Fix-E commit, i.e. Fixes B/C/E banked) and leaves every other file in the working tree alone. Then skip to Task 7 with Fixes B/C(/E) only.
+
+Note: do not commit Task 6 until Step 7's probe and Step 8's golden run both pass. If a regression is discovered *after* the Task 6 commit lands, recover with `git revert <commit-sha>` (single-commit revert) — never with a tree-wide `git restore` or `git reset --hard`. The per-fix-commit architecture in the spec exists precisely so any one fix can be reverted in isolation.
 
 - [ ] **Step 8: Run the golden test**
 
@@ -825,7 +863,8 @@ systematic PURCHASE-column bleed was masking.
 The same logic is applied to AMOUNT column resolution (Fix D).
 _is_single_tx_page is removed.
 
-Fix A+D from accuracy batch 3 (~8 + ~3 golden rows)."
+Fix A+D from accuracy batch 3.
+Golden accuracy: <X.XX%> (Δ vs prior task: <+/-Y.YY%>)."
 ```
 
 ---
@@ -908,7 +947,8 @@ EOF
 
 ## Self-Review Checklist (already applied)
 
-- **Spec coverage:** every spec section maps to a task. Fix B → Tasks 1+2. Fix C → Task 3. Fix E → Tasks 4 (probe) + 5 (conditional). Fix A+D → Task 6. Lint/mypy/golden → Task 7. Page-1 regression guard → Task 6 Step 7 (probe re-run before commit).
-- **Placeholders:** none. Every code block is concrete; the only `<X.XX%>` placeholder is the actual measured accuracy filled in at PR time.
+- **Spec coverage:** every spec section maps to a task. Fix B → Tasks 1+2. Fix C → Task 3. Fix E → Tasks 4 (probe) + 5 (conditional). Fix A+D → Task 6. Lint/mypy/golden → Task 7. Page-1 regression guard → Task 6 Step 7 (probe re-run before commit). Per-fix golden verification → golden-run step in every production-change task before its commit (Tasks 1, 2, 3, 5, 6).
+- **Placeholders:** none. Every code block is concrete; the `<X.XX%>` / `<+/-Y.YY%>` markers in commit messages are filled in by the worker from the captured `/tmp/golden_taskN.txt` output.
 - **Type consistency:** new helper is named `_resolve_competing_marks_gated` everywhere (definition, import, call sites). `_MARGIN_THRESHOLD`, `_MARK_WINNER_DENSITY`, `_compute_col_baselines`, `_TX_MARK_ROLE_SET`, `ColumnRole.AMOUNT` match existing names in `cli.py`.
-- **Conditional logic:** Task 5 has an explicit skip predicate stated up front; Task 6 Step 7 has an explicit abort/revert condition.
+- **Conditional logic:** Task 5 has an explicit skip predicate stated up front; Task 6 Step 7 has an explicit single-file rollback procedure that preserves earlier B/C/E commits (no tree-wide `git restore`).
+- **Fix E false-negative protection:** Task 4 probe enumerates every 2x-triggered or 1x-vs-2x-differing asset cell rather than substring-filtering against expected asset strings. The fully-substituted-neighbor case (`EQT CORP COM` → `S&P GLOBAL INC COM`) is exposed because both cells appear in the exhaustive emission, regardless of whether either string is a substring of the other.
