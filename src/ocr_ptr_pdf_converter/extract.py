@@ -239,6 +239,10 @@ def _normalize_asset(raw: str) -> str:
     s = re.sub(r"(?<=[A-Za-z])[{}]|[{}](?=[A-Za-z])", "I", s)
     # "CLA" / "SHSCLA" → "CL A" / "SHS CL A" (share-class designator).
     s = re.sub(r"\bCL([A-K])\b", r"CL \1", s)
+    # Split glued company suffix: "INTUITINC" → "INTUIT INC", "PTCINC" → "PTC INC".
+    # Allow prefix ≥ 2 chars to catch short tickers like "PTC". The suffix list is
+    # closed (INC|LLC|CORP|PLC) so this can't munch real words.
+    s = re.sub(r"\b([A-Z]{2,})(INC|LLC|CORP|PLC)\b", r"\1 \2", s)
     # "ARTHURJ" → "ARTHUR J": last-name initial appended without space.
     # Require prefix ≥ 6 chars so real surnames like "MCCAUL" are not split.
     # Restricted to J only: broader chars like L/M/P/T cause false splits in

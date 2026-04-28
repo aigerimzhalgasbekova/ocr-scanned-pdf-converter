@@ -271,3 +271,20 @@ def test_section_header_with_tx_bleed_is_rescued():
     assert len(rows) == 1
     assert rows[0].is_section_header
     assert rows[0].asset == "LINDA MAYS MCCAUL 1999 EXEMPT TRUST"
+
+
+def test_normalize_asset_splits_glued_inc_suffix():
+    assert _normalize_asset("INTUITINC") == "INTUIT INC"
+
+
+def test_normalize_asset_splits_glued_inc_short_prefix():
+    # PTC has only 3 letters before INC — must still split.
+    assert _normalize_asset("PTCINC") == "PTC INC"
+
+
+def test_normalize_asset_splits_glued_corp_suffix():
+    assert _normalize_asset("ACMECORP") == "ACME CORP"
+
+
+def test_normalize_asset_splits_glued_llc_suffix():
+    assert _normalize_asset("FOOLLC") == "FOO LLC"
