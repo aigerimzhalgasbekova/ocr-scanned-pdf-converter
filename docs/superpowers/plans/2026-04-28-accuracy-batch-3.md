@@ -88,7 +88,7 @@ The spec requires the golden run after every fix so any per-fix regression is ca
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_task1.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task1.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_task1.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task1.txt
 ```
 
@@ -185,7 +185,7 @@ Expected: all extract tests PASS.
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_task2.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task2.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_task2.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task2.txt
 ```
 
@@ -302,7 +302,7 @@ Expected: all PASS (including the two new ones plus all prior tests — verify t
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_task3.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task3.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_task3.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task3.txt
 ```
 
@@ -583,7 +583,7 @@ Fix E touches the production OCR path, so the golden run is required before this
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_task5.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task5.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_task5.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task5.txt
 ```
 
@@ -849,7 +849,7 @@ Note: do not commit Task 6 until Step 7's probe and Step 8's golden run both pas
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_task6.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_task6.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_task6.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_task6.txt
 ```
 
@@ -911,7 +911,7 @@ Expected: all PASS.
 
 ```bash
 uv run pytest tests/test_golden.py -v > /tmp/golden_final.txt 2>&1 &
-until grep -qE "passed|failed|error" /tmp/golden_final.txt 2>/dev/null; do sleep 30; done
+until grep -qE "passed|failed|error" /tmp/golden_final.txt 2>/dev/null; do sleep 180; done
 grep -oE 'accuracy=[0-9.]+%' /tmp/golden_final.txt
 ```
 
