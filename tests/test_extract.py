@@ -27,6 +27,18 @@ def test_normalize_asset_substitutes_curly_brace_for_i():
     assert _normalize_asset("LP {NV") == "LP INV"
 
 
+def test_normalize_asset_keeps_short_numeric_after_inv():
+    assert _normalize_asset("CEDAR HOLDINGS LP INV 1292") == "CEDAR HOLDINGS LP INV 1292"
+
+
+def test_normalize_asset_keeps_short_numeric_after_usd1():
+    # USD1 followed by 00 (the cent fragment) is a real OCR pattern; keep it.
+    assert (
+        _normalize_asset("GENUINE PARTS CO COM USD1 00")
+        == "GENUINE PARTS CO COM USD1 00"
+    )
+
+
 def test_classify_header_single_tx_type_layout():
     headers = [
         "Holder",

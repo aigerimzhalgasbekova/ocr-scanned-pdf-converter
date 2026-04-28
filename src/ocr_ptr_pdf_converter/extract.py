@@ -235,6 +235,10 @@ _GLUED_TOKEN_SPLITS = {
     "EQPORTF": "EQ PORTF",
 }
 
+# Tokens that legitimately precede a short digit-only tail in an asset name
+# (e.g. "INV 1292", "COM USD1 00"). Used by _normalize_asset's tail-trim loop.
+_NUMERIC_TAIL_ANCHORS = frozenset({"INV", "COM", "USD1"})
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
@@ -265,7 +269,23 @@ def _normalize_asset(raw: str) -> str:
             tokens.append(tok)
     while tokens:
         t = tokens[-1]
-        if _NOISE_TOKEN_RE.match(t) or _TRAIL_NOLETTERS_RE.match(t):
+        if _NOISE_TOKEN_RE.match(t):
+            tokens.pop()
+            continue
+        if _TRAIL_NOLETTERS_RE.match(t):
+            # Protect a short digit-only tail when the previous token is a
+            # known asset-tail anchor (e.g. "INV 1292", "USD1 00"). These
+            # are real fragments of asset descriptions, not table-rule junk.
+            prev_upper = tokens[-2].upper() if len(tokens) >= 2 else ""
+            if (
+                t.isdigit()
+                and len(t) <= 4
+                and (
+                    prev_upper in _REAL_SHORT_SUFFIXES
+                    or prev_upper in _NUMERIC_TAIL_ANCHORS
+                )
+            ):
+                break
             tokens.pop()
             continue
         if len(t) <= 2 and t.upper() not in _REAL_SHORT_SUFFIXES and not t.isalpha():
