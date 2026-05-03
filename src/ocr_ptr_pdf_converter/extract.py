@@ -227,6 +227,18 @@ _COMPANY_TRAILING_SUFFIXES = frozenset(
     {"INC", "LP", "CORP", "LLC", "CO", "PLC", "ADR", "NV", "AG", "ETF"}
 )
 
+# Glued OCR tokens we know how to split. Implemented as an exact-token table
+# rather than a greedy regex so we cannot accidentally split legitimate words.
+_GLUED_TOKEN_SPLITS = {
+    "PLCSHS": "PLC SHS",
+    "EQUPORTF": "EQU PORTF",
+    "EQPORTF": "EQ PORTF",
+}
+
+# Tokens that legitimately precede a short digit-only tail in an asset name
+# (e.g. "INV 1292", "COM USD1 00"). Used by _normalize_asset's tail-trim loop.
+_NUMERIC_TAIL_ANCHORS = frozenset({"INV", "COM", "USD1"})
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
@@ -239,15 +251,41 @@ def _normalize_asset(raw: str) -> str:
     s = re.sub(r"(?<=[A-Za-z])[{}]|[{}](?=[A-Za-z])", "I", s)
     # "CLA" / "SHSCLA" → "CL A" / "SHS CL A" (share-class designator).
     s = re.sub(r"\bCL([A-K])\b", r"CL \1", s)
+    # Split glued company suffix: "INTUITINC" → "INTUIT INC", "PTCINC" → "PTC INC".
+    # Allow prefix ≥ 2 chars to catch short tickers like "PTC". The suffix list is
+    # closed (INC|LLC|CORP|PLC) so this can't munch real words.
+    s = re.sub(r"\b([A-Z]{2,})(INC|LLC|CORP|PLC)\b", r"\1 \2", s)
     # "ARTHURJ" → "ARTHUR J": last-name initial appended without space.
     # Require prefix ≥ 6 chars so real surnames like "MCCAUL" are not split.
     # Restricted to J only: broader chars like L/M/P/T cause false splits in
     # real words (e.g. ADMIRAL → ADMIRA L).
     s = re.sub(r"\b([A-Z]{6,})J\b", r"\1 J", s)
-    tokens = s.split(" ")
+    tokens = []
+    for tok in s.split(" "):
+        replacement = _GLUED_TOKEN_SPLITS.get(tok.upper())
+        if replacement:
+            tokens.extend(replacement.split(" "))
+        else:
+            tokens.append(tok)
     while tokens:
         t = tokens[-1]
-        if _NOISE_TOKEN_RE.match(t) or _TRAIL_NOLETTERS_RE.match(t):
+        if _NOISE_TOKEN_RE.match(t):
+            tokens.pop()
+            continue
+        if _TRAIL_NOLETTERS_RE.match(t):
+            # Protect a short digit-only tail when the previous token is a
+            # known asset-tail anchor (e.g. "INV 1292", "USD1 00"). These
+            # are real fragments of asset descriptions, not table-rule junk.
+            prev_upper = tokens[-2].upper() if len(tokens) >= 2 else ""
+            if (
+                t.isdigit()
+                and len(t) <= 4
+                and (
+                    prev_upper in _REAL_SHORT_SUFFIXES
+                    or prev_upper in _NUMERIC_TAIL_ANCHORS
+                )
+            ):
+                break
             tokens.pop()
             continue
         if len(t) <= 2 and t.upper() not in _REAL_SHORT_SUFFIXES and not t.isalpha():

@@ -8,7 +8,10 @@ from ocr_ptr_pdf_converter.schema import TransactionRow
 
 
 def test_normalize_asset_inserts_space_in_cla():
-    assert _normalize_asset("MASTERCARD INCORPORATED CLA") == "MASTERCARD INCORPORATED CL A"
+    assert (
+        _normalize_asset("MASTERCARD INCORPORATED CLA")
+        == "MASTERCARD INCORPORATED CL A"
+    )
 
 
 def test_normalize_asset_inserts_space_for_initial():
@@ -25,6 +28,21 @@ def test_normalize_asset_keeps_real_suffix():
 
 def test_normalize_asset_substitutes_curly_brace_for_i():
     assert _normalize_asset("LP {NV") == "LP INV"
+
+
+def test_normalize_asset_keeps_short_numeric_after_inv():
+    assert (
+        _normalize_asset("CEDAR HOLDINGS LP INV 1292")
+        == "CEDAR HOLDINGS LP INV 1292"
+    )
+
+
+def test_normalize_asset_keeps_short_numeric_after_usd1():
+    # USD1 followed by 00 (the cent fragment) is a real OCR pattern; keep it.
+    assert (
+        _normalize_asset("GENUINE PARTS CO COM USD1 00")
+        == "GENUINE PARTS CO COM USD1 00"
+    )
 
 
 def test_classify_header_single_tx_type_layout():
@@ -271,3 +289,32 @@ def test_section_header_with_tx_bleed_is_rescued():
     assert len(rows) == 1
     assert rows[0].is_section_header
     assert rows[0].asset == "LINDA MAYS MCCAUL 1999 EXEMPT TRUST"
+
+
+def test_normalize_asset_splits_glued_inc_suffix():
+    assert _normalize_asset("INTUITINC") == "INTUIT INC"
+
+
+def test_normalize_asset_splits_glued_inc_short_prefix():
+    # PTC has only 3 letters before INC — must still split.
+    assert _normalize_asset("PTCINC") == "PTC INC"
+
+
+def test_normalize_asset_splits_glued_corp_suffix():
+    assert _normalize_asset("ACMECORP") == "ACME CORP"
+
+
+def test_normalize_asset_splits_glued_llc_suffix():
+    assert _normalize_asset("FOOLLC") == "FOO LLC"
+
+
+def test_normalize_asset_splits_plcshs_token():
+    assert _normalize_asset("AON PLCSHS CL A") == "AON PLC SHS CL A"
+
+
+def test_normalize_asset_splits_equportf_token():
+    assert _normalize_asset("ALPHA EQUPORTF") == "ALPHA EQU PORTF"
+
+
+def test_normalize_asset_splits_eqportf_token():
+    assert _normalize_asset("BETA EQPORTF") == "BETA EQ PORTF"
