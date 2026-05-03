@@ -8,7 +8,10 @@ from ocr_ptr_pdf_converter.schema import TransactionRow
 
 
 def test_normalize_asset_inserts_space_in_cla():
-    assert _normalize_asset("MASTERCARD INCORPORATED CLA") == "MASTERCARD INCORPORATED CL A"
+    assert (
+        _normalize_asset("MASTERCARD INCORPORATED CLA")
+        == "MASTERCARD INCORPORATED CL A"
+    )
 
 
 def test_normalize_asset_inserts_space_for_initial():
@@ -28,7 +31,10 @@ def test_normalize_asset_substitutes_curly_brace_for_i():
 
 
 def test_normalize_asset_keeps_short_numeric_after_inv():
-    assert _normalize_asset("CEDAR HOLDINGS LP INV 1292") == "CEDAR HOLDINGS LP INV 1292"
+    assert (
+        _normalize_asset("CEDAR HOLDINGS LP INV 1292")
+        == "CEDAR HOLDINGS LP INV 1292"
+    )
 
 
 def test_normalize_asset_keeps_short_numeric_after_usd1():
