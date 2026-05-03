@@ -344,3 +344,31 @@ def test_normalize_asset_splits_equportf_token():
 
 def test_normalize_asset_splits_eqportf_token():
     assert _normalize_asset("BETA EQPORTF") == "BETA EQ PORTF"
+
+
+def _row_for_section_header_test(asset: str = "LONG ASSET NAME HERE") -> TransactionRow:
+    # A row matching the OLD section-header trigger: no holder, no date,
+    # asset >= 12 chars, and a tx_type/amount mark set.
+    return TransactionRow(
+        holder="",
+        asset=asset,
+        transaction_type="PURCHASE",
+        date_of_transaction="",
+        amount_code="C",
+    )
+
+
+def test_is_noisy_section_header_demotes_when_date_ink_low():
+    from ocr_ptr_pdf_converter.extract import _is_noisy_section_header
+
+    row = _row_for_section_header_test()
+    # Low date-column ink → genuine section header, demote.
+    assert _is_noisy_section_header(row, date_density=0.10) is True
+
+
+def test_is_noisy_section_header_preserves_when_date_ink_high():
+    from ocr_ptr_pdf_converter.extract import _is_noisy_section_header
+
+    row = _row_for_section_header_test()
+    # High date-column ink (printed date present, OCR just failed) → real row.
+    assert _is_noisy_section_header(row, date_density=0.30) is False

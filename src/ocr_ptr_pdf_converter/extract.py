@@ -469,9 +469,15 @@ def _is_garbage(row: TransactionRow) -> bool:
     )
 
 
-def _is_noisy_section_header(row: TransactionRow) -> bool:
+def _is_noisy_section_header(row: TransactionRow, date_density: float) -> bool:
     """A long-asset row with no holder and no date, but with OCR bleed in tx_type
-    or amount_code from adjacent cells — should be a section header, not garbage."""
+    or amount_code from adjacent cells — should be a section header, not garbage.
+
+    `date_density` is the per-row ink density of the DATE_TX column. When the
+    date column has clearly-printed ink (>= _DATE_INK_PRESENT_DENSITY) we treat
+    this as a real row whose date OCR failed, not a section header."""
+    if date_density >= _DATE_INK_PRESENT_DENSITY:
+        return False
     return (
         not row.holder
         and not row.date_of_transaction
@@ -492,7 +498,7 @@ def rows_from_cell_texts(
             continue
         if _is_placeholder(row):
             continue
-        if _is_noisy_section_header(row):
+        if _is_noisy_section_header(row, 0.0):
             out.append(TransactionRow.section_header(row.asset))
             continue
         if _is_garbage(row):
