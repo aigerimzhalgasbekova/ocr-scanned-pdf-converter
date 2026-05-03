@@ -277,14 +277,7 @@ def _normalize_asset(raw: str) -> str:
             # known asset-tail anchor (e.g. "INV 1292", "USD1 00"). These
             # are real fragments of asset descriptions, not table-rule junk.
             prev_upper = tokens[-2].upper() if len(tokens) >= 2 else ""
-            if (
-                t.isdigit()
-                and len(t) <= 4
-                and (
-                    prev_upper in _REAL_SHORT_SUFFIXES
-                    or prev_upper in _NUMERIC_TAIL_ANCHORS
-                )
-            ):
+            if t.isdigit() and len(t) <= 4 and prev_upper in _NUMERIC_TAIL_ANCHORS:
                 break
             tokens.pop()
             continue

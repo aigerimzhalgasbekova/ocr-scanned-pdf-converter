@@ -45,6 +45,32 @@ def test_normalize_asset_keeps_short_numeric_after_usd1():
     )
 
 
+def test_normalize_asset_strips_trailing_digit_after_inc():
+    # Trailing single digit after INC is OCR bleed, not a real share class.
+    assert _normalize_asset("INTUIT INC 7") == "INTUIT INC"
+
+
+def test_normalize_asset_strips_trailing_digit_after_lp():
+    # Same pattern after LP.
+    assert _normalize_asset("Mays Allocate 2025 LP 7") == "Mays Allocate 2025 LP"
+
+
+def test_normalize_asset_keeps_short_numeric_after_inv_regression():
+    # Regression guard for the protection branch — must still fire on INV.
+    assert (
+        _normalize_asset("CEDAR HOLDINGS LP INV 1292")
+        == "CEDAR HOLDINGS LP INV 1292"
+    )
+
+
+def test_normalize_asset_keeps_short_numeric_after_usd1_regression():
+    # Regression guard for the protection branch — must still fire on USD1.
+    assert (
+        _normalize_asset("GENUINE PARTS CO COM USD1 00")
+        == "GENUINE PARTS CO COM USD1 00"
+    )
+
+
 def test_classify_header_single_tx_type_layout():
     headers = [
         "Holder",
