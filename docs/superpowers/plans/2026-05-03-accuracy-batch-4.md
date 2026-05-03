@@ -616,13 +616,21 @@ Expected (compare against pre-batch behaviour described in the spec):
 
 If any expectation fails, **stop and call advisor()** before proceeding — the threshold or wiring may need revisiting.
 
-- [ ] **Step 6.2: Run the golden test (~10 min)**
+- [ ] **Step 6.2: Hand off the golden test to the user (manual, ~10 min)**
 
-Run: `uv run pytest tests/test_golden.py -v`
+The golden test takes roughly 10 minutes and is run **manually by the user in the background** (not by an agent). Do NOT invoke it inline.
 
-Expected: the test reports row-recovery accuracy ≥ ~83-85% (up from current 78.57%). Spec target: +5-7 rows. The golden test may fail outright if it asserts exact row count — that's fine for this verification step; what matters is the reported recovered-row delta. Capture the output for the commit message.
+Pause here and ask the user to run:
 
-If accuracy is significantly lower than expected (e.g., flat or worse), **stop and call advisor()** with the probe output and golden diff before proceeding.
+```
+uv run pytest tests/test_golden.py -v
+```
+
+in a background shell on their side, then paste the resulting accuracy / row-recovery output back into the conversation.
+
+Expected: row-recovery accuracy ≥ ~83-85% (up from current 78.57%). Spec target: +5-7 rows. The golden test may fail outright if it asserts exact row count — that's fine for this verification step; what matters is the reported recovered-row delta.
+
+If accuracy is significantly lower than expected (e.g., flat or worse), **stop and call advisor()** with the probe output and golden output before proceeding.
 
 - [ ] **Step 6.3: (Optional) Diff the markdown output before/after for spot-checking**
 
