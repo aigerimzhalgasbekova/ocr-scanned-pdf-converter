@@ -239,6 +239,11 @@ _GLUED_TOKEN_SPLITS = {
 # (e.g. "INV 1292", "COM USD1 00"). Used by _normalize_asset's tail-trim loop.
 _NUMERIC_TAIL_ANCHORS = frozenset({"INV", "COM", "USD1"})
 
+# Date-column ink density above this means a printed date is present, even if
+# OCR couldn't extract a date string. Empirically-set: empty date cells (table
+# rules + scan noise) sit at 0.10–0.20 in 9115728.pdf; printed dates ≥ 0.25.
+_DATE_INK_PRESENT_DENSITY = 0.22
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
