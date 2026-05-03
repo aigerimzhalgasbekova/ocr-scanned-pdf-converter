@@ -358,7 +358,9 @@ def collect_column(
     return out
 
 
-def _row_from_cells(texts: list[str], roles: list[ColumnRole]) -> TransactionRow:
+def _row_from_cells(
+    texts: list[str], roles: list[ColumnRole], date_density: float
+) -> TransactionRow:
     holder = ""
     asset_parts: list[str] = []
     tx_type = ""
@@ -412,12 +414,15 @@ def _row_from_cells(texts: list[str], roles: list[ColumnRole]) -> TransactionRow
         # wins (matches how the form is usually filled — a single mark).
         amount = amount_letters[0]
 
-    if not holder and (asset_parts and tx_type and date_tx):
+    if not holder and asset_parts and tx_type and (
+        date_tx or date_density >= _DATE_INK_PRESENT_DENSITY
+    ):
         # Form's holder column is a sub-checkbox grid (JT/SP/DC). When OCR
         # cannot read the label, default to SP for fully-populated rows —
         # SP is the only holder that appears in the v0.2.0 fixture corpus.
-        # We require the row to have asset + tx_type + date so we don't
-        # invent holders for noise-only rows.
+        # The row must have asset + tx_type and EITHER a date string OR
+        # clearly-printed ink in the date column (so we don't invent holders
+        # for noise rows where the date column is also empty).
         holder = "SP"
 
     asset = " ".join(asset_parts)
@@ -491,7 +496,7 @@ def rows_from_cell_texts(
 ) -> list[TransactionRow]:
     out: list[TransactionRow] = []
     for texts in cell_rows:
-        row = _row_from_cells(texts, roles)
+        row = _row_from_cells(texts, roles, 0.0)
         if _is_empty(row):
             # Wholly blank row — skip so we don't pollute the markdown with
             # empty separator rows that count against over-generation.

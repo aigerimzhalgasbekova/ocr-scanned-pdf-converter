@@ -372,3 +372,38 @@ def test_is_noisy_section_header_preserves_when_date_ink_high():
     row = _row_for_section_header_test()
     # High date-column ink (printed date present, OCR just failed) → real row.
     assert _is_noisy_section_header(row, date_density=0.30) is False
+
+
+def test_row_from_cells_sp_default_fires_on_date_ink():
+    from ocr_ptr_pdf_converter.extract import _row_from_cells
+
+    # Cell layout: [HOLDER, ASSET, TX_TYPE, DATE_TX, AMOUNT]
+    # Holder text is empty (OCR failed), date text is empty (OCR failed),
+    # but date_density signals the printed date is visually present.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    texts = ["", "ACME CORP COM", "PURCHASE", "", "C"]
+    row = _row_from_cells(texts, roles, date_density=0.30)
+    assert row.holder == "SP"
+
+
+def test_row_from_cells_sp_default_skipped_on_empty_date_column():
+    from ocr_ptr_pdf_converter.extract import _row_from_cells
+
+    # Same shape but the date column has no ink — the SP-default must NOT
+    # invent a holder, since there's no evidence the row is real.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    texts = ["", "ACME CORP COM", "PURCHASE", "", "C"]
+    row = _row_from_cells(texts, roles, date_density=0.05)
+    assert row.holder == ""
