@@ -225,8 +225,12 @@ def _process_page(
 
     roles = _resolve_roles(grid, oriented)
     col_widths = [x1 - x0 for x0, x1 in grid.cols]
+    date_tx_idx = next(
+        (i for i, r in enumerate(roles) if r is ColumnRole.DATE_TX), None
+    )
 
     cell_rows: list[list[str]] = []
+    date_densities: list[float] = []
     for y0, y1 in grid.rows[1:]:
         row_texts: list[str] = []
         densities: list[float] = []
@@ -260,8 +264,9 @@ def _process_page(
             row_texts, densities, roles, frozenset({ColumnRole.AMOUNT})
         )
         cell_rows.append(row_texts)
+        date_densities.append(densities[date_tx_idx] if date_tx_idx is not None else 0.0)
 
-    rows = rows_from_cell_texts(cell_rows, roles)
+    rows = rows_from_cell_texts(cell_rows, roles, date_densities)
     date_notified_values = collect_column(cell_rows, roles, ColumnRole.DATE_NOTIFIED)
     return (
         PageResult(page_number=page_number, rotation=rotation, rows=tuple(rows)),

@@ -492,18 +492,22 @@ def _is_noisy_section_header(row: TransactionRow, date_density: float) -> bool:
 
 
 def rows_from_cell_texts(
-    cell_rows: list[list[str]], roles: list[ColumnRole]
+    cell_rows: list[list[str]],
+    roles: list[ColumnRole],
+    date_densities: list[float] | None = None,
 ) -> list[TransactionRow]:
+    if date_densities is None:
+        date_densities = [0.0] * len(cell_rows)
     out: list[TransactionRow] = []
-    for texts in cell_rows:
-        row = _row_from_cells(texts, roles, 0.0)
+    for texts, date_density in zip(cell_rows, date_densities, strict=True):
+        row = _row_from_cells(texts, roles, date_density)
         if _is_empty(row):
             # Wholly blank row — skip so we don't pollute the markdown with
             # empty separator rows that count against over-generation.
             continue
         if _is_placeholder(row):
             continue
-        if _is_noisy_section_header(row, 0.0):
+        if _is_noisy_section_header(row, date_density):
             out.append(TransactionRow.section_header(row.asset))
             continue
         if _is_garbage(row):

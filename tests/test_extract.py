@@ -407,3 +407,41 @@ def test_row_from_cells_sp_default_skipped_on_empty_date_column():
     texts = ["", "ACME CORP COM", "PURCHASE", "", "C"]
     row = _row_from_cells(texts, roles, date_density=0.05)
     assert row.holder == ""
+
+
+def test_rows_from_cell_texts_preserves_real_row_with_date_ink():
+    # Row matches OLD section-header trigger (no holder, no date string,
+    # long asset, tx_type set) BUT date_density is high → must NOT be demoted.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cell_rows = [["", "VANGUARD INDEX FUNDS S&P 500 ETF USD", "PURCHASE", "", "A"]]
+    date_densities = [0.28]
+    out = rows_from_cell_texts(cell_rows, roles, date_densities)
+    assert len(out) == 1
+    assert out[0].is_section_header is False
+    assert out[0].asset == "VANGUARD INDEX FUNDS S&P 500 ETF USD"
+    assert out[0].holder == "SP"  # SP-default fallback fired on date ink
+    assert out[0].transaction_type == "PURCHASE"
+    assert out[0].amount_code == "A"
+
+
+def test_rows_from_cell_texts_demotes_genuine_section_header():
+    # Same shape but date_density is low → genuine section header, demote.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cell_rows = [["", "LLM FAMILY INVESTMENTS II LP", "PURCHASE", "", "C"]]
+    date_densities = [0.12]
+    out = rows_from_cell_texts(cell_rows, roles, date_densities)
+    assert len(out) == 1
+    assert out[0].is_section_header is True
+    assert out[0].asset == "LLM FAMILY INVESTMENTS II LP"
