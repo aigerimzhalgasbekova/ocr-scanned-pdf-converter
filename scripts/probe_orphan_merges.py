@@ -161,10 +161,10 @@ def _classify_and_print(page_num, cell_rows, roles, all_densities):
     )
     out: list[TransactionRow] = []
     for idx, texts in enumerate(cell_rows):
-        row = _row_from_cells(texts, roles)
         date_density = (
             all_densities[idx][date_idx] if date_idx is not None else 0.0
         )
+        row = _row_from_cells(texts, roles, date_density)
         tag = ""
         detail = ""
         if _is_empty(row):
@@ -172,7 +172,7 @@ def _classify_and_print(page_num, cell_rows, roles, all_densities):
         elif _is_placeholder(row):
             tag = "PLACEHOLDER"
             detail = f"asset={row.asset!r}"
-        elif _is_noisy_section_header(row):
+        elif _is_noisy_section_header(row, date_density):
             tag = "SECTION(noisy)"
             detail = (
                 f"date_dens={date_density:.3f} asset={row.asset!r} "
