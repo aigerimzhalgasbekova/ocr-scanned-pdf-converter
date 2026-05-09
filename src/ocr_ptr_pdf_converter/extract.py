@@ -239,6 +239,11 @@ _GLUED_TOKEN_SPLITS = {
 # (e.g. "INV 1292", "COM USD1 00"). Used by _normalize_asset's tail-trim loop.
 _NUMERIC_TAIL_ANCHORS = frozenset({"INV", "COM", "USD1"})
 
+# Date-column ink density above this means a printed date is present, even if
+# OCR couldn't extract a date string. Empirically-set: empty date cells (table
+# rules + scan noise) sit at 0.10–0.20 in 9115728.pdf; printed dates ≥ 0.25.
+_DATE_INK_PRESENT_DENSITY = 0.22
+
 
 def _normalize_asset(raw: str) -> str:
     """Clean a single OCR'd asset cell: strip leading/trailing junk pipes,
@@ -277,14 +282,7 @@ def _normalize_asset(raw: str) -> str:
             # known asset-tail anchor (e.g. "INV 1292", "USD1 00"). These
             # are real fragments of asset descriptions, not table-rule junk.
             prev_upper = tokens[-2].upper() if len(tokens) >= 2 else ""
-            if (
-                t.isdigit()
-                and len(t) <= 4
-                and (
-                    prev_upper in _REAL_SHORT_SUFFIXES
-                    or prev_upper in _NUMERIC_TAIL_ANCHORS
-                )
-            ):
+            if t.isdigit() and len(t) <= 4 and prev_upper in _NUMERIC_TAIL_ANCHORS:
                 break
             tokens.pop()
             continue
@@ -360,7 +358,9 @@ def collect_column(
     return out
 
 
-def _row_from_cells(texts: list[str], roles: list[ColumnRole]) -> TransactionRow:
+def _row_from_cells(
+    texts: list[str], roles: list[ColumnRole], date_density: float
+) -> TransactionRow:
     holder = ""
     asset_parts: list[str] = []
     tx_type = ""
@@ -414,12 +414,15 @@ def _row_from_cells(texts: list[str], roles: list[ColumnRole]) -> TransactionRow
         # wins (matches how the form is usually filled — a single mark).
         amount = amount_letters[0]
 
-    if not holder and (asset_parts and tx_type and date_tx):
+    if not holder and asset_parts and tx_type and (
+        date_tx or date_density >= _DATE_INK_PRESENT_DENSITY
+    ):
         # Form's holder column is a sub-checkbox grid (JT/SP/DC). When OCR
         # cannot read the label, default to SP for fully-populated rows —
         # SP is the only holder that appears in the v0.2.0 fixture corpus.
-        # We require the row to have asset + tx_type + date so we don't
-        # invent holders for noise-only rows.
+        # The row must have asset + tx_type and EITHER a date string OR
+        # clearly-printed ink in the date column (so we don't invent holders
+        # for noise rows where the date column is also empty).
         holder = "SP"
 
     asset = " ".join(asset_parts)
@@ -471,9 +474,15 @@ def _is_garbage(row: TransactionRow) -> bool:
     )
 
 
-def _is_noisy_section_header(row: TransactionRow) -> bool:
+def _is_noisy_section_header(row: TransactionRow, date_density: float) -> bool:
     """A long-asset row with no holder and no date, but with OCR bleed in tx_type
-    or amount_code from adjacent cells — should be a section header, not garbage."""
+    or amount_code from adjacent cells — should be a section header, not garbage.
+
+    `date_density` is the per-row ink density of the DATE_TX column. When the
+    date column has clearly-printed ink (>= _DATE_INK_PRESENT_DENSITY) we treat
+    this as a real row whose date OCR failed, not a section header."""
+    if date_density >= _DATE_INK_PRESENT_DENSITY:
+        return False
     return (
         not row.holder
         and not row.date_of_transaction
@@ -483,18 +492,22 @@ def _is_noisy_section_header(row: TransactionRow) -> bool:
 
 
 def rows_from_cell_texts(
-    cell_rows: list[list[str]], roles: list[ColumnRole]
+    cell_rows: list[list[str]],
+    roles: list[ColumnRole],
+    date_densities: list[float] | None = None,
 ) -> list[TransactionRow]:
+    if date_densities is None:
+        date_densities = [0.0] * len(cell_rows)
     out: list[TransactionRow] = []
-    for texts in cell_rows:
-        row = _row_from_cells(texts, roles)
+    for texts, date_density in zip(cell_rows, date_densities, strict=True):
+        row = _row_from_cells(texts, roles, date_density)
         if _is_empty(row):
             # Wholly blank row — skip so we don't pollute the markdown with
             # empty separator rows that count against over-generation.
             continue
         if _is_placeholder(row):
             continue
-        if _is_noisy_section_header(row):
+        if _is_noisy_section_header(row, date_density):
             out.append(TransactionRow.section_header(row.asset))
             continue
         if _is_garbage(row):

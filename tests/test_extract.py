@@ -45,6 +45,32 @@ def test_normalize_asset_keeps_short_numeric_after_usd1():
     )
 
 
+def test_normalize_asset_strips_trailing_digit_after_inc():
+    # Trailing single digit after INC is OCR bleed, not a real share class.
+    assert _normalize_asset("INTUIT INC 7") == "INTUIT INC"
+
+
+def test_normalize_asset_strips_trailing_digit_after_lp():
+    # Same pattern after LP.
+    assert _normalize_asset("Mays Allocate 2025 LP 7") == "Mays Allocate 2025 LP"
+
+
+def test_normalize_asset_keeps_short_numeric_after_inv_regression():
+    # Regression guard for the protection branch — must still fire on INV.
+    assert (
+        _normalize_asset("CEDAR HOLDINGS LP INV 1292")
+        == "CEDAR HOLDINGS LP INV 1292"
+    )
+
+
+def test_normalize_asset_keeps_short_numeric_after_usd1_regression():
+    # Regression guard for the protection branch — must still fire on USD1.
+    assert (
+        _normalize_asset("GENUINE PARTS CO COM USD1 00")
+        == "GENUINE PARTS CO COM USD1 00"
+    )
+
+
 def test_classify_header_single_tx_type_layout():
     headers = [
         "Holder",
@@ -318,3 +344,104 @@ def test_normalize_asset_splits_equportf_token():
 
 def test_normalize_asset_splits_eqportf_token():
     assert _normalize_asset("BETA EQPORTF") == "BETA EQ PORTF"
+
+
+def _row_for_section_header_test(asset: str = "LONG ASSET NAME HERE") -> TransactionRow:
+    # A row matching the OLD section-header trigger: no holder, no date,
+    # asset >= 12 chars, and a tx_type/amount mark set.
+    return TransactionRow(
+        holder="",
+        asset=asset,
+        transaction_type="PURCHASE",
+        date_of_transaction="",
+        amount_code="C",
+    )
+
+
+def test_is_noisy_section_header_demotes_when_date_ink_low():
+    from ocr_ptr_pdf_converter.extract import _is_noisy_section_header
+
+    row = _row_for_section_header_test()
+    # Low date-column ink → genuine section header, demote.
+    assert _is_noisy_section_header(row, date_density=0.10) is True
+
+
+def test_is_noisy_section_header_preserves_when_date_ink_high():
+    from ocr_ptr_pdf_converter.extract import _is_noisy_section_header
+
+    row = _row_for_section_header_test()
+    # High date-column ink (printed date present, OCR just failed) → real row.
+    assert _is_noisy_section_header(row, date_density=0.30) is False
+
+
+def test_row_from_cells_sp_default_fires_on_date_ink():
+    from ocr_ptr_pdf_converter.extract import _row_from_cells
+
+    # Cell layout: [HOLDER, ASSET, TX_TYPE, DATE_TX, AMOUNT]
+    # Holder text is empty (OCR failed), date text is empty (OCR failed),
+    # but date_density signals the printed date is visually present.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    texts = ["", "ACME CORP COM", "PURCHASE", "", "C"]
+    row = _row_from_cells(texts, roles, date_density=0.30)
+    assert row.holder == "SP"
+
+
+def test_row_from_cells_sp_default_skipped_on_empty_date_column():
+    from ocr_ptr_pdf_converter.extract import _row_from_cells
+
+    # Same shape but the date column has no ink — the SP-default must NOT
+    # invent a holder, since there's no evidence the row is real.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    texts = ["", "ACME CORP COM", "PURCHASE", "", "C"]
+    row = _row_from_cells(texts, roles, date_density=0.05)
+    assert row.holder == ""
+
+
+def test_rows_from_cell_texts_preserves_real_row_with_date_ink():
+    # Row matches OLD section-header trigger (no holder, no date string,
+    # long asset, tx_type set) BUT date_density is high → must NOT be demoted.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cell_rows = [["", "VANGUARD INDEX FUNDS S&P 500 ETF USD", "PURCHASE", "", "A"]]
+    date_densities = [0.28]
+    out = rows_from_cell_texts(cell_rows, roles, date_densities)
+    assert len(out) == 1
+    assert out[0].is_section_header is False
+    assert out[0].asset == "VANGUARD INDEX FUNDS S&P 500 ETF USD"
+    assert out[0].holder == "SP"  # SP-default fallback fired on date ink
+    assert out[0].transaction_type == "PURCHASE"
+    assert out[0].amount_code == "A"
+
+
+def test_rows_from_cell_texts_demotes_genuine_section_header():
+    # Same shape but date_density is low → genuine section header, demote.
+    roles = [
+        ColumnRole.HOLDER,
+        ColumnRole.ASSET,
+        ColumnRole.TX_TYPE,
+        ColumnRole.DATE_TX,
+        ColumnRole.AMOUNT,
+    ]
+    cell_rows = [["", "LLM FAMILY INVESTMENTS II LP", "PURCHASE", "", "C"]]
+    date_densities = [0.12]
+    out = rows_from_cell_texts(cell_rows, roles, date_densities)
+    assert len(out) == 1
+    assert out[0].is_section_header is True
+    assert out[0].asset == "LLM FAMILY INVESTMENTS II LP"
