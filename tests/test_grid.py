@@ -39,6 +39,25 @@ def test_returns_empty_grid_when_no_lines():
     assert grid.cols == []
 
 
+def test_detects_short_table_in_tall_page():
+    """Sparse PTR pages (e.g. last page with only 1-2 transaction rows) leave
+    most of the page blank below the table. The vertical column dividers are
+    therefore much shorter than the page itself. detect_grid must still
+    recover the columns by sizing its vertical-line threshold to the detected
+    table extent, not the page height."""
+    table = _draw_grid(rows=3, cols=5)  # 3*40+1 = 121 px tall, 5*60+1 = 301 px wide
+    page_h = table.shape[0] * 6  # massive padding below the table
+    page = np.full((page_h, table.shape[1]), 255, dtype=np.uint8)
+    page[: table.shape[0], :] = table
+    grid = detect_grid(page)
+    assert len(grid.rows) == 3, (
+        f"expected 3 rows when table is ~17% of page height, got {len(grid.rows)}"
+    )
+    assert len(grid.cols) == 5, (
+        f"expected 5 cols when table is ~17% of page height, got {len(grid.cols)}"
+    )
+
+
 def test_cols_from_header_text_synthesizes_bands():
     """Faint-line fallback: when fewer than 4 vertical lines are detected,
     detect_grid uses header-token x-positions to synthesize column bands."""
