@@ -229,10 +229,7 @@ def _process_page(
         (i for i, r in enumerate(roles) if r is ColumnRole.DATE_TX), None
     )
 
-    # Pass 1: per-row OCR. Collect raw densities and texts; defer mark
-    # resolution until baselines are available.
     cell_rows: list[list[str]] = []
-    all_row_densities: list[list[float]] = []
     date_densities: list[float] = []
     for y0, y1 in grid.rows[1:]:
         row_texts: list[str] = []
@@ -258,40 +255,16 @@ def _process_page(
             row_texts.append(text)
             densities.append(ink_density(bin_crop) if bin_crop.size else 0.0)
 
-        cell_rows.append(row_texts)
-        all_row_densities.append(densities)
-        date_density = (
-            densities[date_tx_idx] if date_tx_idx is not None else 0.0
-        )
-        date_densities.append(date_density)
-
-    # Pass 2: compute per-column baselines and resolve competing marks.
-    # For tx-marks, subtract column baselines unless the page is dominated
-    # by a single tx-type winner (preserves correctness on uniform pages).
-    n_cols = len(grid.cols)
-    densities_per_col: list[list[float]] = [[] for _ in range(n_cols)]
-    for r in all_row_densities:
-        for i in range(n_cols):
-            densities_per_col[i].append(r[i] if i < len(r) else 0.0)
-    baselines = _compute_col_baselines(densities_per_col)
-
-    tx_mark_col_indices = [
-        i for i, r in enumerate(roles) if r in _TX_MARK_ROLE_SET
-    ]
-    skip_tx_baseline = _is_single_tx_page(all_row_densities, tx_mark_col_indices)
-
-    for row_texts, densities in zip(cell_rows, all_row_densities, strict=True):
-        if skip_tx_baseline or not tx_mark_col_indices:
-            tx_densities = densities
-        else:
-            tx_densities = list(densities)
-            for i in tx_mark_col_indices:
-                tx_densities[i] = max(0.0, densities[i] - baselines[i])
-        _resolve_competing_marks(row_texts, tx_densities, roles, _TX_MARK_ROLE_SET)
-        # Amount-mark resolution: unchanged (Cluster B deferred).
+        # Pick a single tx-type mark winner per row to suppress multi-mark
+        # noise (the form's vertical-text headers leak ink into adjacent
+        # narrow cells, so several would otherwise all read as marked).
+        _resolve_competing_marks(row_texts, densities, roles, _TX_MARK_ROLE_SET)
+        # Same for amount: only one A..K cell can be the "real" mark.
         _resolve_competing_marks(
             row_texts, densities, roles, frozenset({ColumnRole.AMOUNT})
         )
+        cell_rows.append(row_texts)
+        date_densities.append(densities[date_tx_idx] if date_tx_idx is not None else 0.0)
 
     rows = rows_from_cell_texts(cell_rows, roles, date_densities)
     date_notified_values = collect_column(cell_rows, roles, ColumnRole.DATE_NOTIFIED)
