@@ -445,3 +445,46 @@ def test_rows_from_cell_texts_demotes_genuine_section_header():
     assert len(out) == 1
     assert out[0].is_section_header is True
     assert out[0].asset == "LLM FAMILY INVESTMENTS II LP"
+
+
+def test_normalize_asset_strips_digit_letter_pair_after_lp():
+    # OCR bleed: digit + single A-K letter trailing a company suffix.
+    assert _normalize_asset("MAYS ALLOCATE LP 7 A") == "MAYS ALLOCATE LP"
+
+
+def test_normalize_asset_strips_dash_letter_after_com():
+    # OCR bleed: dash + single A-K letter trailing a company suffix.
+    assert _normalize_asset("EQT CORP COM - J") == "EQT CORP COM"
+
+
+def test_normalize_asset_strips_semicolon_short_suffix_after_inc():
+    # OCR bleed: "; BD" appended after a real suffix. BD is a protected
+    # real suffix in isolation, but this configuration is OCR junk.
+    assert _normalize_asset("PTC INC ; BD") == "PTC INC"
+
+
+def test_normalize_asset_preserves_cl_a_share_class():
+    # "CL A" share-class designator must survive — prev is "CL", not a
+    # company suffix or a no-letters token.
+    assert _normalize_asset("AON PLC SHS CL A") == "AON PLC SHS CL A"
+
+
+def test_normalize_asset_preserves_inv_numeric_tail_regression_b5():
+    # The new digit+letter pop must not interact with the INV numeric-tail
+    # protection branch.
+    assert (
+        _normalize_asset("CEDAR HOLDINGS LP INV 1292")
+        == "CEDAR HOLDINGS LP INV 1292"
+    )
+
+
+def test_normalize_asset_preserves_real_bd_suffix():
+    # BD on its own (no preceding semicolon) is a real suffix and must stay.
+    assert _normalize_asset("SOMETHING REV BD") == "SOMETHING REV BD"
+
+
+def test_normalize_asset_preserves_slash_and_dash_separators():
+    # Only semicolon triggers the <suffix> ; <letters> strip. Other
+    # punctuation (/, -) must NOT trigger it, even with 2-3 letters after.
+    assert _normalize_asset("SOME REV / BD") == "SOME REV / BD"
+    assert _normalize_asset("SOME REV - BD") == "SOME REV - BD"

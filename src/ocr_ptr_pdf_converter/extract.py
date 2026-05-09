@@ -274,6 +274,20 @@ def _normalize_asset(raw: str) -> str:
             tokens.append(tok)
     while tokens:
         t = tokens[-1]
+        # Strip "<real-suffix> ; <2-3 letters>" tail. "BD" alone is a real
+        # suffix, but "PTC INC ; BD" is OCR bleed after the suffix. The
+        # semicolon is the disambiguator: real assets do not have a
+        # semicolon between their final suffix and a trailing token.
+        if (
+            len(tokens) >= 3
+            and len(t) in (2, 3)
+            and t.isalpha()
+            and tokens[-2] == ";"
+            and tokens[-3].upper() in _REAL_SHORT_SUFFIXES
+        ):
+            tokens.pop()
+            # Next loop iteration will pop the punctuation token as noise.
+            continue
         if _NOISE_TOKEN_RE.match(t):
             tokens.pop()
             continue
@@ -289,11 +303,23 @@ def _normalize_asset(raw: str) -> str:
         if len(t) <= 2 and t.upper() not in _REAL_SHORT_SUFFIXES and not t.isalpha():
             tokens.pop()
             continue
-        # Single A-K letter: drop only when preceded by a company-suffix token.
-        # This strips "INTUIT INC A" → "INTUIT INC" while preserving "CL A".
+        # Single A-K letter: drop when preceded by a company-suffix token,
+        # or when preceded by a no-letters token (digit, "-") that is NOT
+        # protected by _NUMERIC_TAIL_ANCHORS. "INTUIT INC A" → "INTUIT INC".
+        # "MAYS ALLOCATE LP 7 A" → pop A, then 7 strips on next iteration.
+        # "EQT CORP COM - J" → pop J, then "-" strips as noise.
+        # "CEDAR HOLDINGS LP INV 1292 A" is preserved (INV in anchors, protects 1292).
+        # "CL A" is preserved (prev="CL", not a suffix and not no-letters).
         if len(t) == 1 and t.upper() in _AK_LETTERS:
             prev = tokens[-2].upper() if len(tokens) >= 2 else ""
             if prev in _COMPANY_TRAILING_SUFFIXES:
+                tokens.pop()
+                continue
+            if (
+                prev
+                and _TRAIL_NOLETTERS_RE.match(prev)
+                and prev not in _NUMERIC_TAIL_ANCHORS
+            ):
                 tokens.pop()
                 continue
             break  # Preceded by something else (e.g. "CL") — keep the letter.

@@ -177,41 +177,43 @@ def _resolve_competing_marks(
         row_texts[i] = "X" if (i == best_idx and above_threshold) else ""
 
 
-def _compute_col_baselines(densities_per_col: list[list[float]]) -> list[float]:
-    """Return min(median, P25) per column. Anchoring at P25 ensures the baseline
-    stays below the unmarked-row floor even when >50% of rows are marked."""
-    baselines: list[float] = []
-    for col_dens in densities_per_col:
-        if not col_dens:
-            baselines.append(0.0)
-        else:
-            median = float(np.median(col_dens))
-            p25 = float(np.percentile(col_dens, 25))
-            baselines.append(min(median, p25))
-    return baselines
-
-
-def _is_single_tx_page(
+def _compute_tx_col_baselines(
     all_row_densities: list[list[float]],
-    col_indices: list[int],
-) -> bool:
-    """Return True if ≥ 80% of rows have the same highest-density column.
-    When True, baseline subtraction is skipped for that role-set to prevent
-    over-correction on pages where all rows share the same tx type."""
-    if not all_row_densities or not col_indices:
-        return False
-    winners: list[int] = []
+    tx_mark_col_indices: list[int],
+) -> dict[int, float]:
+    """Per-tx-mark-column baseline = P10 of densities from rows where THIS
+    column was NOT the raw-density winner among tx-mark cols.
+
+    Sampling only from non-winner rows keeps the baseline below the column's
+    unmarked floor even when the column is a frequent winner across the page
+    (the P25 of all-rows densities sits inside the marked range once a
+    column has ≥25% real marks, which over-subtracts and wipes out real
+    marks — that bug regressed the 70/30 page composition)."""
+    baselines: dict[int, float] = {}
+    if not tx_mark_col_indices or not all_row_densities:
+        return baselines
+    row_winners: list[int | None] = []
     for densities in all_row_densities:
-        candidates = [(densities[i], i) for i in col_indices if i < len(densities)]
+        candidates = [
+            (densities[i], i)
+            for i in tx_mark_col_indices
+            if i < len(densities)
+        ]
         if not candidates:
+            row_winners.append(None)
             continue
-        best_d, best_i = max(candidates)
-        if best_d >= _MARK_WINNER_DENSITY:
-            winners.append(best_i)
-    if not winners:
-        return False
-    most_common_count = max(winners.count(i) for i in set(winners))
-    return most_common_count / len(all_row_densities) >= 0.8
+        _, best_i = max(candidates)
+        row_winners.append(best_i)
+    for col_i in tx_mark_col_indices:
+        non_winner = [
+            all_row_densities[r][col_i]
+            for r, w in enumerate(row_winners)
+            if w != col_i and col_i < len(all_row_densities[r])
+        ]
+        baselines[col_i] = (
+            float(np.percentile(non_winner, 10)) if non_winner else 0.0
+        )
+    return baselines
 
 
 def _process_page(
@@ -229,7 +231,10 @@ def _process_page(
         (i for i, r in enumerate(roles) if r is ColumnRole.DATE_TX), None
     )
 
+    # Pass 1: per-row OCR. Collect raw densities and texts; defer mark
+    # resolution until per-column baselines are available.
     cell_rows: list[list[str]] = []
+    all_row_densities: list[list[float]] = []
     date_densities: list[float] = []
     for y0, y1 in grid.rows[1:]:
         row_texts: list[str] = []
@@ -255,16 +260,35 @@ def _process_page(
             row_texts.append(text)
             densities.append(ink_density(bin_crop) if bin_crop.size else 0.0)
 
-        # Pick a single tx-type mark winner per row to suppress multi-mark
-        # noise (the form's vertical-text headers leak ink into adjacent
-        # narrow cells, so several would otherwise all read as marked).
-        _resolve_competing_marks(row_texts, densities, roles, _TX_MARK_ROLE_SET)
-        # Same for amount: only one A..K cell can be the "real" mark.
+        cell_rows.append(row_texts)
+        all_row_densities.append(densities)
+        date_densities.append(
+            densities[date_tx_idx] if date_tx_idx is not None else 0.0
+        )
+
+    # Pass 2: subtract per-column baselines from tx-mark densities to
+    # counteract systematic vertical-text label bleed, then resolve
+    # competing marks. Baseline samples only non-winning rows so the
+    # column's own real marks don't pollute its baseline (Fix #2). P10
+    # of those samples (Fix #1) stays below the unmarked floor even when
+    # ~70% of rows are real-marked — the regression mode for min(med, P25).
+    tx_mark_col_indices = [
+        i for i, r in enumerate(roles) if r in _TX_MARK_ROLE_SET
+    ]
+    tx_baselines = _compute_tx_col_baselines(all_row_densities, tx_mark_col_indices)
+
+    for row_texts, densities in zip(cell_rows, all_row_densities, strict=True):
+        if tx_mark_col_indices:
+            tx_densities = list(densities)
+            for i in tx_mark_col_indices:
+                tx_densities[i] = max(0.0, densities[i] - tx_baselines.get(i, 0.0))
+        else:
+            tx_densities = densities
+        _resolve_competing_marks(row_texts, tx_densities, roles, _TX_MARK_ROLE_SET)
+        # Amount-mark resolution: unchanged (Cluster B deferred).
         _resolve_competing_marks(
             row_texts, densities, roles, frozenset({ColumnRole.AMOUNT})
         )
-        cell_rows.append(row_texts)
-        date_densities.append(densities[date_tx_idx] if date_tx_idx is not None else 0.0)
 
     rows = rows_from_cell_texts(cell_rows, roles, date_densities)
     date_notified_values = collect_column(cell_rows, roles, ColumnRole.DATE_NOTIFIED)

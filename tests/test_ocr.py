@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -84,3 +86,67 @@ def test_ocr_letter_restricts_to_amount_codes():
     img = Image.new("RGB", (60, 60), "white")
     out = ocr_cell(img, _white_binary(60, 60), CellKind.LETTER)
     assert out in {"", *list("ABCDEFGHIJK")}
+
+
+def test_ocr_date_fast_path_unchanged():
+    """First psm 7 pass returns a clean date — must not enter fallback."""
+    img = Image.new("RGB", (200, 60), "white")
+    with patch(
+        "ocr_ptr_pdf_converter.ocr.pytesseract.image_to_string",
+        return_value="3/16/2026",
+    ) as m:
+        out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
+    assert out == "3/16/2026"
+    assert m.call_count == 1  # fast path, no fallback
+
+
+def test_ocr_date_upscale_recovers_after_initial_miss():
+    """First pass returns junk; 2x upscale pass returns the date."""
+    img = Image.new("RGB", (200, 60), "white")
+    side_effects = ["", "3/16/2026"]  # 1st: psm 7 fails, 2nd: upscaled psm 7 ok
+    with patch(
+        "ocr_ptr_pdf_converter.ocr.pytesseract.image_to_string",
+        side_effect=side_effects,
+    ):
+        out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
+    assert out == "3/16/2026"
+
+
+def test_ocr_date_digit_confusion_recovers():
+    """All tesseract passes return I/O confused output; digit substitution
+    fixes it. raw text contains both "/" and a digit → gate satisfied."""
+    img = Image.new("RGB", (200, 60), "white")
+    side_effects = ["3/I6/2O26", "3/I6/2O26"]  # both passes confused
+    with patch(
+        "ocr_ptr_pdf_converter.ocr.pytesseract.image_to_string",
+        side_effect=side_effects,
+    ):
+        out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
+    assert out == "3/16/2026"
+
+
+def test_ocr_date_no_slash_no_fabrication():
+    """Cell with no '/' (just text) must not fabricate a date even if
+    digit substitution would happen to produce one."""
+    img = Image.new("RGB", (200, 60), "white")
+    # "REV CORP" has no slash → fallback step 3's gate blocks it.
+    side_effects = ["REV CORP", "REV CORP"]
+    with patch(
+        "ocr_ptr_pdf_converter.ocr.pytesseract.image_to_string",
+        side_effect=side_effects,
+    ):
+        out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
+    assert out == ""
+
+
+def test_ocr_date_no_digit_no_fabrication():
+    """Raw text with '/' but no digit (unlikely but possible) must not
+    fabricate a date through digit substitution."""
+    img = Image.new("RGB", (200, 60), "white")
+    side_effects = ["a/b/c", "a/b/c"]
+    with patch(
+        "ocr_ptr_pdf_converter.ocr.pytesseract.image_to_string",
+        side_effect=side_effects,
+    ):
+        out = ocr_cell(img, _white_binary(200, 60), CellKind.DATE)
+    assert out == ""

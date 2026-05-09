@@ -5,9 +5,18 @@ from enum import Enum
 
 import numpy as np
 import pytesseract
+from PIL import Image as PILImage
 from PIL.Image import Image
 
 _DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{4}\b")
+# OCR digit confusions: characters tesseract commonly emits in place of
+# digits when a date cell is degraded. Applied only when a '/' AND a
+# pre-existing digit are both present in the raw text — prevents
+# fabricating a date out of pure text.
+_DIGIT_CONFUSIONS = str.maketrans(
+    {"l": "1", "I": "1", "|": "1", "O": "0", "o": "0", "S": "5", "B": "8"}
+)
+_HAS_DIGIT_RE = re.compile(r"\d")
 _AMOUNT_CODES = set("ABCDEFGHIJK")
 _MARK_DENSITY_THRESHOLD = 0.06
 # psm 4 sometimes catches column rules and stray ink at the cell edges
@@ -50,9 +59,30 @@ def ocr_cell(image: Image, binary: np.ndarray, kind: CellKind) -> str:
         raw = pytesseract.image_to_string(image, config="--psm 4")
         return _clean_text_cell(raw)
     if kind is CellKind.DATE:
+        # Step 1: psm 7 fast path.
         text = pytesseract.image_to_string(image, config="--psm 7")
         m = _DATE_RE.search(text)
-        return m.group(0) if m else ""
+        if m:
+            return m.group(0)
+        # Step 2: 2x upscale retry. Date cells are small; upscaling rescues
+        # marginal scans. Mirrors the asset-cell strategy in cli.py.
+        upscaled = image.resize(
+            (image.width * 2, image.height * 2),
+            PILImage.Resampling.LANCZOS,
+        )
+        text2 = pytesseract.image_to_string(upscaled, config="--psm 7")
+        m = _DATE_RE.search(text2)
+        if m:
+            return m.group(0)
+        # Step 3: digit-confusion substitution on the raw text. Gated by
+        # presence of "/" AND a digit so non-date text can't be fabricated.
+        for raw in (text2, text):
+            if "/" in raw and _HAS_DIGIT_RE.search(raw):
+                fixed = raw.translate(_DIGIT_CONFUSIONS)
+                m = _DATE_RE.search(fixed)
+                if m:
+                    return m.group(0)
+        return ""
     if kind is CellKind.LETTER:
         text = pytesseract.image_to_string(
             image, config="--psm 10 -c tessedit_char_whitelist=ABCDEFGHIJK"

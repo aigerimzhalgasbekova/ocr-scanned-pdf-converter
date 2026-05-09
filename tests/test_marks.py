@@ -1,20 +1,18 @@
-import pytest
-
-from ocr_ptr_pdf_converter.cli import _compute_col_baselines, _is_single_tx_page
+from ocr_ptr_pdf_converter.cli import _compute_tx_col_baselines
 
 
 def test_baseline_subtraction_picks_low_density_winner():
-    # 3 TX cols; PURCHASE has systematic bleed ~0.18-0.20, SALE has one real mark
-    # at row 1 (density 0.25). With baselines, SALE should win row 1.
-    densities_per_col = [
-        [0.20, 0.18, 0.19],   # PURCHASE: consistent bleed
-        [0.12, 0.25, 0.11],   # SALE: one real mark at row index 1
-        [0.05, 0.06, 0.05],   # EXCHANGE: low throughout
+    # 3 rows × 3 tx-mark cols. PURCHASE has consistent bleed (0.18-0.20),
+    # SALE has one real mark at row 1 (0.25), EXCH low throughout.
+    # On row 1, baseline subtraction must let SALE win over PURCHASE.
+    all_row_densities = [
+        [0.20, 0.12, 0.05],  # row 0: PURCHASE wins raw
+        [0.18, 0.25, 0.06],  # row 1: SALE wins raw (real mark)
+        [0.19, 0.11, 0.05],  # row 2: PURCHASE wins raw
     ]
-    baselines = _compute_col_baselines(densities_per_col)
-    # Row 1 effective densities (0-indexed row 1)
+    baselines = _compute_tx_col_baselines(all_row_densities, [0, 1, 2])
     eff_row1 = [
-        max(0.0, densities_per_col[col][1] - baselines[col]) for col in range(3)
+        max(0.0, all_row_densities[1][i] - baselines[i]) for i in range(3)
     ]
     assert eff_row1[1] > eff_row1[0], (
         f"SALE eff={eff_row1[1]:.3f} should exceed "
@@ -22,33 +20,63 @@ def test_baseline_subtraction_picks_low_density_winner():
     )
 
 
-def test_single_tx_section_skips_baseline():
-    # 5 rows: col 0 wins 4/5 (80%) → should skip baseline subtraction
+def test_baseline_preserves_real_marks_on_70_30_page():
+    """Regression guard for the bug that took accuracy from 80.6% to 66.33%:
+    a page with 70% rows marked in column A and 30% rows marked in column B.
+
+    The previous min(median, P25) baseline put column A's P25 inside the
+    marked-density range (because 7/10 rows had real marks at ~0.20),
+    so subtraction zeroed out column A's real marks and the row dropped
+    below _MARK_WINNER_DENSITY → no winner → tx_type empty → row dropped.
+
+    Non-winner-based P10 baseline only samples the 3 rows where A wasn't
+    the winner (i.e., the bleed-only rows), giving baseline ≈ 0.04. Real
+    marks at 0.20 survive at effective ≈ 0.16 — well above threshold."""
     all_row_densities = [
-        [0.20, 0.05],
-        [0.18, 0.06],
-        [0.22, 0.04],
-        [0.19, 0.05],
-        [0.06, 0.21],  # one row where col 1 wins
+        [0.20, 0.04],  # row 0: A wins (real mark)
+        [0.21, 0.04],  # row 1: A wins
+        [0.19, 0.04],  # row 2: A wins
+        [0.20, 0.04],  # row 3: A wins
+        [0.18, 0.04],  # row 4: A wins
+        [0.20, 0.04],  # row 5: A wins
+        [0.21, 0.04],  # row 6: A wins
+        [0.04, 0.20],  # row 7: B wins (real mark)
+        [0.04, 0.21],  # row 8: B wins
+        [0.04, 0.19],  # row 9: B wins
     ]
-    assert _is_single_tx_page(all_row_densities, [0, 1]) is True
+    baselines = _compute_tx_col_baselines(all_row_densities, [0, 1])
+    # Both baselines must sit in the unmarked floor (~0.04), NOT in the
+    # marked range (~0.20).
+    assert baselines[0] < 0.06, f"col A baseline {baselines[0]:.3f} too high"
+    assert baselines[1] < 0.06, f"col B baseline {baselines[1]:.3f} too high"
+    # Real marks must survive subtraction with margin above the 0.05 winner
+    # threshold on every row that has one.
+    for r in range(7):
+        eff_a = max(0.0, all_row_densities[r][0] - baselines[0])
+        assert eff_a > 0.10, f"row {r} col A eff={eff_a:.3f} would lose"
+    for r in range(7, 10):
+        eff_b = max(0.0, all_row_densities[r][1] - baselines[1])
+        assert eff_b > 0.10, f"row {r} col B eff={eff_b:.3f} would lose"
 
 
-def test_single_tx_section_does_not_skip_when_split():
-    # 3/5 rows have col 0 winning = 60% < 80% → do not skip
+def test_baseline_zero_for_dominant_column_on_uniform_page():
+    """100% one-tx-type page: the dominant column has 0 non-winner samples,
+    so its baseline = 0 and its real marks are not subtracted. The other
+    column's baseline uses bleed densities (still low). Replaces the old
+    _is_single_tx_page guard — non-winner-based sampling makes that
+    safety net obsolete."""
     all_row_densities = [
-        [0.20, 0.05],
-        [0.18, 0.06],
-        [0.22, 0.04],
-        [0.06, 0.21],
-        [0.05, 0.20],
+        [0.20, 0.04],
+        [0.21, 0.04],
+        [0.19, 0.04],
+        [0.20, 0.04],
+        [0.20, 0.04],
     ]
-    assert _is_single_tx_page(all_row_densities, [0, 1]) is False
+    baselines = _compute_tx_col_baselines(all_row_densities, [0, 1])
+    assert baselines[0] == 0.0
+    assert baselines[1] < 0.06
 
 
-def test_baseline_anchored_at_p25_when_median_high():
-    # Col has sparse marks: 3 rows low (0.05), 5 rows high (0.40).
-    # median = 0.40, P25 ≈ 0.05 → baseline = min(0.40, 0.05) = 0.05.
-    densities_per_col = [[0.05, 0.05, 0.05, 0.40, 0.40, 0.40, 0.40, 0.40]]
-    baselines = _compute_col_baselines(densities_per_col)
-    assert baselines[0] == pytest.approx(0.05, abs=0.02)
+def test_baseline_empty_inputs_return_empty():
+    assert _compute_tx_col_baselines([], [0, 1]) == {}
+    assert _compute_tx_col_baselines([[0.1, 0.2]], []) == {}
