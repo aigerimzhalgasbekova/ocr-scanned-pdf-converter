@@ -3,7 +3,7 @@
 
 Always use `uv run` for all **Python commands** — never call `python`, `pytest`, `mypy`, or `ruff` directly. This project uses uv for environment management.
 
-Golden test must run separately from unit tests and always in background. Exclude with: `pytest tests/ --ignore=tests/test_golden.py`. Golden test takes ~10min; use background task with until-loop completion check on output file.
+Golden test must run separately from unit tests and always in background. Exclude with: `pytest tests/ --ignore=tests/test_golden.py`. Golden test takes ~10min; use background task with until-loop completion check on output file. Cancel loop immediately after retrieving result.
 
 ## Applied Learning
 
