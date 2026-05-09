@@ -414,14 +414,16 @@ from ocr_ptr_pdf_converter.render import render_pdf
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "fixtures" / "9115728.pdf"
 
-# The 6 expected-SALE rows from diagnose_golden.py (asset uppercased).
-TARGET_ASSETS = {
-    "ABBOTT LABORATORIES",
-    "HILTON WORLDWIDE HLDGS INC",
-    "AON PLC SHS CL A",
-    "PLEXUS CORP",
-    "LPL FINANCIAL HOLDINGS INC",
-    "HEALTHPEAK PROPERTIES INC",
+# The 6 expected-SALE rows from diagnose_golden.py. Each tuple is
+# (asset, date, amount_code). Match on full identity to avoid counting
+# duplicate assets on the fixture (e.g., AON PLC SHS CL A appears 3 times).
+TARGET_ROWS = {
+    ("ABBOTT LABORATORIES", "3/4/2026", "A"),
+    ("HILTON WORLDWIDE HLDGS INC", "3/12/2026", "B"),
+    ("AON PLC SHS CL A", "3/12/2026", "B"),
+    ("PLEXUS CORP", "3/4/2026", "C"),
+    ("LPL FINANCIAL HOLDINGS INC", "3/2/2026", "C"),
+    ("HEALTHPEAK PROPERTIES INC", "3/23/2026", "D"),
 }
 
 TX_MARK_ROLES = (
@@ -437,7 +439,7 @@ def main() -> None:
     raw_winners_purchase = 0
     baseline_winners_sale = 0
     confirmed_rows = 0
-    matched_rows = 0
+    matched_row_keys: set[tuple[str, str, str]] = set()
 
     for page_no, img in enumerate(images, start=1):
         rotation, oriented, binary, grid = _orient_and_grid(img)
@@ -448,16 +450,23 @@ def main() -> None:
 
         tx_col_indices = [i for i, r in enumerate(roles) if r in TX_MARK_ROLES]
         tx_col_index_to_role = {i: roles[i] for i in tx_col_indices}
+        amount_col_idx = next(
+            (i for i, r in enumerate(roles) if r is ColumnRole.AMOUNT), None
+        )
         if not tx_col_indices:
             continue
 
         # Pass 1: collect per-row densities and per-row OCR text for asset col.
         all_row_densities: list[list[float]] = []
         per_row_assets: list[str] = []
+        per_row_dates: list[str] = []
+        per_row_amounts: list[str] = []
 
         for y0, y1 in grid.rows[1:]:
             row_densities: list[float] = []
             asset_text = ""
+            date_text = ""
+            amount_text = ""
             for (x0, x1), role, width in zip(
                 grid.cols, roles, col_widths, strict=True
             ):
@@ -474,8 +483,20 @@ def main() -> None:
                     if crop.width > 1 and crop.height > 1:
                         kind = _kind_for_cell(role, width)
                         asset_text = ocr_cell(crop, bin_crop, kind)
+                elif role is ColumnRole.DATE_NOTIFIED:
+                    crop = _crop_pil(oriented, rect)
+                    if crop.width > 1 and crop.height > 1:
+                        kind = _kind_for_cell(role, width)
+                        date_text = ocr_cell(crop, bin_crop, kind)
+                elif role is ColumnRole.AMOUNT:
+                    crop = _crop_pil(oriented, rect)
+                    if crop.width > 1 and crop.height > 1:
+                        kind = _kind_for_cell(role, width)
+                        amount_text = ocr_cell(crop, bin_crop, kind)
             all_row_densities.append(row_densities)
             per_row_assets.append(asset_text)
+            per_row_dates.append(date_text)
+            per_row_amounts.append(amount_text)
 
         # Compute baselines (pivot to per-col).
         n_cols = len(grid.cols)
@@ -485,14 +506,21 @@ def main() -> None:
                 densities_per_col[i].append(r[i] if i < len(r) else 0.0)
         baselines = _compute_col_baselines(densities_per_col)
 
-        for row_idx, (densities, asset_text) in enumerate(
-            zip(all_row_densities, per_row_assets, strict=True)
+        for row_idx, (densities, asset_text, date_text, amount_text) in enumerate(
+            zip(
+                all_row_densities,
+                per_row_assets,
+                per_row_dates,
+                per_row_amounts,
+                strict=True,
+            )
         ):
-            normalized = _normalize_asset(asset_text).upper()
-            if normalized not in TARGET_ASSETS:
+            normalized_asset = _normalize_asset(asset_text).upper()
+            row_key = (normalized_asset, date_text, amount_text)
+            if row_key not in TARGET_ROWS:
                 continue
-            matched_rows += 1
-            print(f"\n=== page {page_no} row {row_idx}  asset={normalized} ===")
+            matched_row_keys.add(row_key)
+            print(f"\n=== page {page_no} row {row_idx}  row_key={row_key} ===")
             raw = {tx_col_index_to_role[i].name: densities[i] for i in tx_col_indices}
             adj = {
                 tx_col_index_to_role[i].name: max(0.0, densities[i] - baselines[i])
@@ -514,15 +542,22 @@ def main() -> None:
                 confirmed_rows += 1
 
     print("\n" + "=" * 60)
-    print(f"matched rows           : {matched_rows} / {len(TARGET_ASSETS)} expected")
+    print(f"matched rows           : {len(matched_row_keys)} / {len(TARGET_ROWS)} expected")
     print(f"raw PURCHASE winners   : {raw_winners_purchase}")
     print(f"baseline SALE winners  : {baseline_winners_sale}")
     print(f"per-row confirmations  : {confirmed_rows}  (raw=PURCHASE AND adj=SALE)")
     print()
+    if len(matched_row_keys) < len(TARGET_ROWS):
+        missing = TARGET_ROWS - matched_row_keys
+        print("ERROR: Not all target rows were found. Missing:")
+        for row in sorted(missing):
+            print(f"  {row}")
+        print()
     print(
         "ACCEPTANCE GATE:\n"
-        f"  Hypothesis is confirmed for {confirmed_rows} of {matched_rows} rows.\n"
-        "  PROCEED to Fix 1 Phase B only if >= 4 of the 6 target rows confirm.\n"
+        f"  Found {len(matched_row_keys)} of {len(TARGET_ROWS)} target rows.\n"
+        f"  {confirmed_rows} rows confirm hypothesis (raw=PURCHASE AND adj=SALE).\n"
+        "  PROCEED to Fix 1 Phase B only if exactly 6 rows matched AND >= 4 confirm.\n"
     )
 
 
@@ -538,11 +573,15 @@ Expected: 6 per-row blocks, each showing raw and adjusted densities and winners.
 
 - [ ] **Step 4: Verify the acceptance gate by hand**
 
-Open `/tmp/batch5_probe.txt`. Count the rows where `winner raw == PURCHASE` AND `winner adjusted == SALE`. Record the count.
+Open `/tmp/batch5_probe.txt`. Check two conditions:
+
+1. **Matched rows count:** The probe must report exactly 6 matched rows. If fewer, some target rows were not found on the fixture (indicates the row key—asset+date+amount—is wrong or OCR failed to extract them). Report the missing rows to the user; do not proceed.
+2. **Confirmation count:** Count the rows where `winner raw == PURCHASE` AND `winner adjusted == SALE` in the final summary. Record this count.
 
 **ACCEPTANCE GATE:**
-- If count ≥ 4: hypothesis confirmed. Continue to Task 4 (Phase B).
-- If count < 4: hypothesis is wrong (or partially wrong). STOP. Do not modify cli.py. Report findings to the user with the per-row block that failed the gate, and ask whether to re-investigate or scope-down the batch.
+- If matched rows = 6 AND confirmed rows ≥ 4: hypothesis confirmed. Continue to Task 4 (Phase B).
+- If matched rows < 6: STOP. Report missing rows to the user; the target row keys may need adjustment.
+- If matched rows = 6 AND confirmed rows < 4: STOP. The hypothesis is wrong (or partially wrong). Report findings and ask whether to re-investigate or scope-down the batch.
 
 - [ ] **Step 5: Commit the probe (regardless of gate outcome)**
 
