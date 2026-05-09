@@ -84,7 +84,19 @@ def detect_grid(binary: np.ndarray) -> Grid:
     h_lines = cv2.morphologyEx(inv, cv2.MORPH_OPEN, h_kernel)
     v_lines = cv2.morphologyEx(inv, cv2.MORPH_OPEN, v_kernel)
     horizontal_y = _line_positions(h_lines, axis=1, min_run=int(w * 0.5))
-    vertical_x = _line_positions(v_lines, axis=0, min_run=int(h * 0.5))
+    # Default vertical-line threshold: half the page height. On sparse pages
+    # (e.g. last page with 1-2 rows) the table occupies <50% of the page, so
+    # column dividers can never reach this threshold and grid detection
+    # silently produces zero columns. In that case only, tighten the
+    # threshold to the detected table extent so short tables still have
+    # their columns recovered. Normal pages take the same path as before to
+    # avoid 1-2 px centroid shifts that cascade into mark-density flips.
+    v_min_run = int(h * 0.5)
+    if len(horizontal_y) >= 2:
+        table_h = horizontal_y[-1] - horizontal_y[0]
+        if table_h < v_min_run:
+            v_min_run = int(table_h * 0.5)
+    vertical_x = _line_positions(v_lines, axis=0, min_run=v_min_run)
     rows = _bands(horizontal_y)
     cols = _bands(vertical_x)
     if len(cols) < _MIN_COLS:
