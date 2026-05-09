@@ -17,19 +17,17 @@ Usage:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from ocr_ptr_pdf_converter.cli import (
-    _compute_col_baselines,
+    _compute_tx_col_baselines,
     _crop_binary,
     _crop_pil,
     _kind_for_cell,
     _orient_and_grid,
-    _process_page,
     _resolve_roles,
 )
-from ocr_ptr_pdf_converter.extract import ColumnRole, _normalize_asset
+from ocr_ptr_pdf_converter.extract import ColumnRole
 from ocr_ptr_pdf_converter.ocr import ink_density, ocr_cell
 from ocr_ptr_pdf_converter.render import render_pdf
 
@@ -102,13 +100,11 @@ def main() -> None:
             all_row_densities.append(row_densities)
             row_cell_texts.append(row_texts)
 
-        # Compute baselines.
-        n_cols = len(grid.cols)
-        densities_per_col: list[list[float]] = [[] for _ in range(n_cols)]
-        for r in all_row_densities:
-            for i in range(n_cols):
-                densities_per_col[i].append(r[i] if i < len(r) else 0.0)
-        baselines = _compute_col_baselines(densities_per_col)
+        # Compute baselines (non-winner P10 — see _compute_tx_col_baselines).
+        baselines_map = _compute_tx_col_baselines(
+            all_row_densities, tx_col_indices
+        )
+        baselines = [baselines_map.get(i, 0.0) for i in range(len(grid.cols))]
 
         # Extract and classify rows (simplified: just grab asset/date/amount).
         from ocr_ptr_pdf_converter.extract import rows_from_cell_texts
@@ -159,7 +155,10 @@ def main() -> None:
                 confirmed_rows += 1
 
     print("\n" + "=" * 60)
-    print(f"matched rows           : {len(matched_row_keys)} / {len(TARGET_ROWS)} expected")
+    print(
+        f"matched rows           : "
+        f"{len(matched_row_keys)} / {len(TARGET_ROWS)} expected"
+    )
     print(f"raw PURCHASE winners   : {raw_winners_purchase}")
     print(f"baseline SALE winners  : {baseline_winners_sale}")
     print(f"per-row confirmations  : {confirmed_rows}  (raw=PURCHASE AND adj=SALE)")
