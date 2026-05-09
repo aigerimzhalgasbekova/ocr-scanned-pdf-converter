@@ -77,11 +77,18 @@ def test_normalize_asset_preserves_inv_numeric_tail_regression_b5():
 def test_normalize_asset_preserves_real_bd_suffix():
     # BD on its own (no preceding semicolon) is a real suffix and must stay.
     assert _normalize_asset("SOMETHING REV BD") == "SOMETHING REV BD"
+
+
+def test_normalize_asset_preserves_slash_and_dash_separators():
+    # Only semicolon triggers the <suffix> ; <letters> strip. Other
+    # punctuation (/, -) must NOT trigger it, even with 2-3 letters after.
+    assert _normalize_asset("SOME REV / BD") == "SOME REV / BD"
+    assert _normalize_asset("SOME REV - BD") == "SOME REV - BD"
 ```
 
 - [ ] **Step 4: Run tests to verify they fail**
 
-Run: `uv run pytest tests/test_extract.py -v -k "strips_digit_letter or strips_dash_letter or strips_semicolon_short or preserves_cl_a or preserves_inv_numeric_tail_regression_b5 or preserves_real_bd"`
+Run: `uv run pytest tests/test_extract.py -v -k "strips_digit_letter or strips_dash_letter or strips_semicolon_short or preserves_cl_a or preserves_inv_numeric_tail_regression_b5 or preserves_real_bd or preserves_slash_and_dash"`
 
 Expected: 3 FAIL (the three positive cases), 3 PASS (the regression guards already pass under current behavior).
 
@@ -104,17 +111,22 @@ Replace with:
 
 ```python
         # Single A-K letter: drop when preceded by a company-suffix token,
-        # or when preceded by a no-letters token (digit, "-") that is itself
-        # OCR bleed after a company suffix. "INTUIT INC A" → "INTUIT INC".
+        # or when preceded by a no-letters token (digit, "-") that is NOT
+        # protected by _NUMERIC_TAIL_ANCHORS. "INTUIT INC A" → "INTUIT INC".
         # "MAYS ALLOCATE LP 7 A" → pop A, then 7 strips on next iteration.
         # "EQT CORP COM - J" → pop J, then "-" strips as noise.
+        # "CEDAR HOLDINGS LP INV 1292 A" is preserved (INV in anchors, protects 1292).
         # "CL A" is preserved (prev="CL", not a suffix and not no-letters).
         if len(t) == 1 and t.upper() in _AK_LETTERS:
             prev = tokens[-2].upper() if len(tokens) >= 2 else ""
             if prev in _COMPANY_TRAILING_SUFFIXES:
                 tokens.pop()
                 continue
-            if prev and _TRAIL_NOLETTERS_RE.match(prev):
+            if (
+                prev
+                and _TRAIL_NOLETTERS_RE.match(prev)
+                and prev not in _NUMERIC_TAIL_ANCHORS
+            ):
                 tokens.pop()
                 continue
             break  # Preceded by something else (e.g. "CL") — keep the letter.
@@ -131,7 +143,7 @@ Then, BEFORE the `_NOISE_TOKEN_RE` check at the top of the loop body (right afte
             len(tokens) >= 3
             and len(t) in (2, 3)
             and t.isalpha()
-            and _NOISE_TOKEN_RE.match(tokens[-2])
+            and tokens[-2] == ";"
             and tokens[-3].upper() in _REAL_SHORT_SUFFIXES
         ):
             tokens.pop()
@@ -141,9 +153,9 @@ Then, BEFORE the `_NOISE_TOKEN_RE` check at the top of the loop body (right afte
 
 - [ ] **Step 6: Run the new tests to verify they pass**
 
-Run: `uv run pytest tests/test_extract.py -v -k "strips_digit_letter or strips_dash_letter or strips_semicolon_short or preserves_cl_a or preserves_inv_numeric_tail_regression_b5 or preserves_real_bd"`
+Run: `uv run pytest tests/test_extract.py -v -k "strips_digit_letter or strips_dash_letter or strips_semicolon_short or preserves_cl_a or preserves_inv_numeric_tail_regression_b5 or preserves_real_bd or preserves_slash_and_dash"`
 
-Expected: 6 PASS.
+Expected: 7 PASS (3 positive cases + 4 regression guards).
 
 - [ ] **Step 7: Run the full extract test file to catch regressions**
 
